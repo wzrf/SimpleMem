@@ -23,11 +23,11 @@ from main import SimpleMemSystem
 from simplemem.core.models.memory_entry import Dialogue
 
 # Download required NLTK data
-try:
-    nltk.download('punkt', quiet=True)
-    nltk.download('wordnet', quiet=True)
-except Exception as e:
-    print(f"Error downloading NLTK data: {e}")
+# try:
+#     nltk.download('punkt', quiet=True)
+#     nltk.download('wordnet', quiet=True)
+# except Exception as e:
+#     print(f"Error downloading NLTK data: {e}")
 
 # Initialize SentenceTransformer model for semantic similarity
 try:
@@ -56,11 +56,13 @@ class QA:
             return self.adversarial_answer
         return self.answer
 
+
 @dataclass
 class Turn:
     speaker: str
     dia_id: str
     text: str
+
 
 @dataclass
 class Session:
@@ -68,19 +70,23 @@ class Session:
     date_time: str
     turns: List[Turn]
 
+
 @dataclass
 class Conversation:
     speaker_a: str
     speaker_b: str
     sessions: Dict[int, Session]
 
+
 @dataclass
 class EventSummary:
     events: Dict[str, Dict[str, List[str]]]  # session -> speaker -> events
 
+
 @dataclass
 class Observation:
     observations: Dict[str, Dict[str, List[List[str]]]]  # session -> speaker -> [observation, evidence]
+
 
 @dataclass
 class LoCoMoSample:
@@ -117,6 +123,7 @@ def parse_session(session_data: List[dict], session_id: int, date_time: str) -> 
         ))
     return Session(session_id=session_id, date_time=date_time, turns=turns)
 
+
 def parse_conversation(conv_data: dict) -> Conversation:
     """Parse conversation data."""
     sessions = {}
@@ -135,6 +142,7 @@ def parse_conversation(conv_data: dict) -> Conversation:
         speaker_b=conv_data["speaker_b"],
         sessions=sessions
     )
+
 
 def load_locomo_dataset(file_path: Union[str, Path]) -> List[LoCoMoSample]:
     """
@@ -262,6 +270,7 @@ def simple_tokenize(text):
     text = str(text)
     return text.lower().replace('.', ' ').replace(',', ' ').replace('!', ' ').replace('?', ' ').split()
 
+
 def calculate_rouge_scores(prediction: str, reference: str) -> Dict[str, float]:
     """Calculate ROUGE scores for prediction against reference."""
     scorer = rouge_scorer.RougeScorer(['rouge1', 'rouge2', 'rougeL'], use_stemmer=True)
@@ -271,6 +280,7 @@ def calculate_rouge_scores(prediction: str, reference: str) -> Dict[str, float]:
         'rouge2_f': scores['rouge2'].fmeasure,
         'rougeL_f': scores['rougeL'].fmeasure
     }
+
 
 def calculate_bleu_scores(prediction: str, reference: str) -> Dict[str, float]:
     """Calculate BLEU scores with different n-gram settings."""
@@ -290,6 +300,7 @@ def calculate_bleu_scores(prediction: str, reference: str) -> Dict[str, float]:
 
     return scores
 
+
 def calculate_bert_scores(prediction: str, reference: str) -> Dict[str, float]:
     """Calculate BERTScore for semantic similarity."""
     try:
@@ -307,6 +318,7 @@ def calculate_bert_scores(prediction: str, reference: str) -> Dict[str, float]:
             'bert_f1': 0.0
         }
 
+
 def calculate_meteor_score(prediction: str, reference: str) -> float:
     """Calculate METEOR score for the prediction."""
     try:
@@ -314,6 +326,7 @@ def calculate_meteor_score(prediction: str, reference: str) -> float:
     except Exception as e:
         print(f"Error calculating METEOR score: {e}")
         return 0.0
+
 
 def calculate_sentence_similarity(prediction: str, reference: str) -> float:
     """Calculate sentence embedding similarity using SentenceBERT."""
@@ -331,11 +344,12 @@ def calculate_sentence_similarity(prediction: str, reference: str) -> float:
         print(f"Error calculating sentence similarity: {e}")
         return 0.0
 
+
 def create_judge_llm_client():
     """Create a dedicated LLM client for judge evaluation"""
     from utils.llm_client import LLMClient
     import config
-    
+
     # Use judge-specific settings, fall back to main settings if not specified
     judge_api_key = getattr(config, 'JUDGE_API_KEY', None) or config.OPENAI_API_KEY
     judge_base_url = getattr(config, 'JUDGE_BASE_URL', None)
@@ -344,17 +358,17 @@ def create_judge_llm_client():
     judge_model = getattr(config, 'JUDGE_MODEL', None) or config.LLM_MODEL
     judge_thinking = getattr(config, 'JUDGE_ENABLE_THINKING', False)
     judge_streaming = getattr(config, 'JUDGE_USE_STREAMING', False)
-    
+
     print(f"Initializing LLM-as-judge with model: {judge_model}")
     if judge_base_url and judge_base_url != getattr(config, 'OPENAI_BASE_URL', None):
         print(f"Using separate judge endpoint: {judge_base_url}")
-    
+
     # For OpenAI API, disable thinking mode to avoid parameter errors
     is_openai_api = not judge_base_url or "openai" in judge_base_url.lower()
     if is_openai_api and judge_thinking:
         print("Note: Disabling thinking mode for OpenAI API compatibility")
         judge_thinking = False
-    
+
     return LLMClient(
         api_key=judge_api_key,
         model=judge_model,
@@ -363,49 +377,50 @@ def create_judge_llm_client():
         use_streaming=judge_streaming
     )
 
+
 def llm_judge_answers(prediction: str, reference: str, question: str, judge_client) -> Dict[str, Union[float, str]]:
     """Use LLM to judge if prediction is semantically equivalent to reference."""
     # Handle empty or None values
     if not prediction or not reference:
         return {"llm_judge_score": 0.0, "llm_reasoning": "Empty prediction or reference"}
-    
+
     prediction = str(prediction).strip()
     reference = str(reference).strip()
-    
+
     # Build judgment prompt
-#     prompt = f"""You are an expert evaluator for question-answering systems. Your task is to determine if the predicted answer contains the core information from the reference answer or provides a reasonable interpretation, being generous in your evaluation.
+    #     prompt = f"""You are an expert evaluator for question-answering systems. Your task is to determine if the predicted answer contains the core information from the reference answer or provides a reasonable interpretation, being generous in your evaluation.
 
-# Question: {question}
+    # Question: {question}
 
-# Reference Answer: {reference}
-# Predicted Answer: {prediction}
+    # Reference Answer: {reference}
+    # Predicted Answer: {prediction}
 
-# Evaluation Criteria (Be generous and inclusive):
-# 1. **Core Information Match**: Does the predicted answer contain the main factual content from the reference?
-# 2. **Partial Correctness**: Even if not 100% complete, does it capture key elements correctly?
-# 3. **Reasonable Interpretation**: Could the predicted answer be a valid interpretation of the available information?
-# 4. **Format Flexibility**: Accept different time formats, date expressions, and phrasings
-# 5. **Semantic Variations**: "meeting", "appointment", "get together" are all acceptable
-# 6. **Contextual Understanding**: If the answer shows understanding of the context, give credit
-# 7. **Incomplete but Accurate**: Partial information that's correct should be scored positively
-# 8. **Different but Valid**: Alternative valid answers to the same question should be accepted
+    # Evaluation Criteria (Be generous and inclusive):
+    # 1. **Core Information Match**: Does the predicted answer contain the main factual content from the reference?
+    # 2. **Partial Correctness**: Even if not 100% complete, does it capture key elements correctly?
+    # 3. **Reasonable Interpretation**: Could the predicted answer be a valid interpretation of the available information?
+    # 4. **Format Flexibility**: Accept different time formats, date expressions, and phrasings
+    # 5. **Semantic Variations**: "meeting", "appointment", "get together" are all acceptable
+    # 6. **Contextual Understanding**: If the answer shows understanding of the context, give credit
+    # 7. **Incomplete but Accurate**: Partial information that's correct should be scored positively
+    # 8. **Different but Valid**: Alternative valid answers to the same question should be accepted
 
-# Special Cases:
-# - If reference says "2 PM" and prediction says "afternoon" or "14:00" → Accept
-# - If reference says "Alice and Bob meet" and prediction says "Alice has a meeting" → Accept (partial info)
-# - If reference includes specific details but prediction captures the general idea → Accept
-# - Numbers and dates with minor variations (e.g., "2pm" vs "2:00 PM") → Accept
-# - If the prediction demonstrates understanding of the conversation → Lean toward accepting
+    # Special Cases:
+    # - If reference says "2 PM" and prediction says "afternoon" or "14:00" → Accept
+    # - If reference says "Alice and Bob meet" and prediction says "Alice has a meeting" → Accept (partial info)
+    # - If reference includes specific details but prediction captures the general idea → Accept
+    # - Numbers and dates with minor variations (e.g., "2pm" vs "2:00 PM") → Accept
+    # - If the prediction demonstrates understanding of the conversation → Lean toward accepting
 
-# Only score 0.0 if the predicted answer is clearly wrong, contradicts the reference, or is completely unrelated.
+    # Only score 0.0 if the predicted answer is clearly wrong, contradicts the reference, or is completely unrelated.
 
-# Output your evaluation in JSON format:
-# {{
-#   "score": 1.0,  // 1.0 for acceptable answer, 0.0 only for clearly wrong answers
-#   "reasoning": "Brief explanation focusing on what information was captured correctly"
-# }}
+    # Output your evaluation in JSON format:
+    # {{
+    #   "score": 1.0,  // 1.0 for acceptable answer, 0.0 only for clearly wrong answers
+    #   "reasoning": "Brief explanation focusing on what information was captured correctly"
+    # }}
 
-# Return ONLY the JSON, no other text."""
+    # Return ONLY the JSON, no other text."""
 
     prompt = f"""You are an expert Relevance & Accuracy Evaluator. Your task is to determine if the Predicted Answer successfully retrieves the necessary information to answer the Question, based on the Reference Answer.
 
@@ -447,7 +462,7 @@ Return ONLY the JSON, no other text.
     try:
         messages = [
             {
-                "role": "system", 
+                "role": "system",
                 "content": "You are an expert evaluator. Always output valid JSON format."
             },
             {
@@ -455,33 +470,33 @@ Return ONLY the JSON, no other text.
                 "content": prompt
             }
         ]
-        
+
         import config
         # Use JSON format if configured
         response_format = None
         if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
             response_format = {"type": "json_object"}
-        
+
         # Use judge-specific temperature setting
         judge_temperature = getattr(config, 'JUDGE_TEMPERATURE', 0.3)
-        
+
         response = judge_client.chat_completion(
             messages,
             temperature=judge_temperature,
             response_format=response_format,
             max_retries=3  # Ensure robust evaluation with retries
         )
-        
+
         # Parse JSON response
         result = judge_client.extract_json(response)
         score = float(result.get("score", 0.0))
         reasoning = result.get("reasoning", "No reasoning provided")
-        
+
         return {
             "llm_judge_score": score,
             "llm_reasoning": reasoning
         }
-        
+
     except Exception as e:
         print(f"Warning: LLM judge evaluation failed: {e}")
         return {
@@ -489,7 +504,9 @@ Return ONLY the JSON, no other text.
             "llm_reasoning": f"Evaluation failed: {e}"
         }
 
-def calculate_metrics(prediction: str, reference: str, question: str = None, judge_client=None, use_llm_judge: bool = False) -> Dict[str, float]:
+
+def calculate_metrics(prediction: str, reference: str, question: str = None, judge_client=None,
+                      use_llm_judge: bool = False) -> Dict[str, float]:
     """Calculate comprehensive evaluation metrics for a prediction."""
     # Handle empty or None values
     if not prediction or not reference:
@@ -546,7 +563,7 @@ def calculate_metrics(prediction: str, reference: str, question: str = None, jud
         "sbert_similarity": sbert_similarity,
         "llm_judge_score": 0.0  # Default value
     }
-    
+
     # Add LLM judge evaluation if enabled
     if use_llm_judge and question and judge_client:
         llm_result = llm_judge_answers(prediction, reference, question, judge_client)
@@ -555,7 +572,9 @@ def calculate_metrics(prediction: str, reference: str, question: str = None, jud
 
     return metrics
 
-def aggregate_metrics(all_metrics: List[Dict[str, float]], all_categories: List[int]) -> Dict[str, Dict[str, Union[float, Dict[str, float]]]]:
+
+def aggregate_metrics(all_metrics: List[Dict[str, float]], all_categories: List[int]) -> Dict[
+    str, Dict[str, Union[float, Dict[str, float]]]]:
     """Calculate aggregate statistics for all metrics, split by category."""
     if not all_metrics:
         return {}
@@ -626,7 +645,8 @@ def aggregate_metrics(all_metrics: List[Dict[str, float]], all_categories: List[
 class LoCoMoTester:
     """Test SimpleMem system on LoComo10 dataset"""
 
-    def __init__(self, system: SimpleMemSystem, dataset_path: str, use_llm_judge: bool = False, test_workers: int = None):
+    def __init__(self, system: SimpleMemSystem, dataset_path: str, use_llm_judge: bool = False,
+                 test_workers: int = None):
         self.system = system
         self.dataset_path = Path(dataset_path)
         self.use_llm_judge = use_llm_judge
@@ -762,13 +782,25 @@ Return ONLY the JSON, no other text.
 
     def test_sample(self, sample: LoCoMoSample, sample_idx: int, enable_parallel_questions: bool = False):
         """Test a single sample from the dataset"""
-        print(f"\n{'='*80}")
+        print(f"\n{'=' * 80}")
         print(f"Testing Sample {sample_idx}")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
 
         # Convert and add dialogues
         dialogues = self.convert_to_dialogues(sample)
         print(f"Adding {len(dialogues)} dialogues to memory...")
+
+        with open("./test_ref/result_simplerag_fusion_rag_1.0_Qwen2.5-3B-Instruct_qwen2.5-7B_retrieve_5.json") as f:
+            simplerag_res = json.load(f)
+            target_ids = {0, 2, 3, 4, 6, 7, 9}  # 转换为 set，查找效率提升至 O(1)
+
+            # 生成字典时直接添加筛选条件
+            simplerag_res_q = {
+                x["question"]: x["sample_id"]
+                for x in simplerag_res
+                if x["sample_id"] in target_ids
+            }
+            sample.qa = [qa for qa in sample.qa if qa.question in simplerag_res_q]
 
         add_start = time.time()
         self.system.add_dialogues(dialogues)
@@ -783,33 +815,33 @@ Return ONLY the JSON, no other text.
             sample_results = self._test_questions_sequential(sample.qa)
 
         return sample_results
-    
+
     def _test_questions_sequential(self, qa_list: List):
         """Test questions sequentially (original method)"""
         sample_results = []
-        
+
         for qa_idx, qa in enumerate(qa_list):
             result = self._process_single_question(qa, qa_idx)
             sample_results.append(result)
-            
+
         return sample_results
-    
+
     def _test_questions_parallel(self, qa_list: List):
         """Test questions in parallel using ThreadPoolExecutor"""
         import concurrent.futures
-        
+
         print(f"\n[Parallel Testing] Processing {len(qa_list)} questions in parallel")
         sample_results = []
-        
+
         # Use ThreadPoolExecutor for parallel question processing
         # Use explicit test_workers parameter, or config, or reasonable default
         import config
-        
+
         if self.test_workers is not None:
             max_workers = self.test_workers
         else:
             max_workers = getattr(config, 'MAX_RETRIEVAL_WORKERS', 16)
-        
+
         # Apply reasonable limits
         max_workers = min(
             max_workers,
@@ -817,16 +849,16 @@ Return ONLY the JSON, no other text.
             20  # Higher limit for better parallelism, but watch API rate limits
         )
         max_workers = max(max_workers, 1)  # At least 1 worker
-        
+
         print(f"[Parallel Testing] Using {max_workers} parallel workers for {len(qa_list)} questions")
-        
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all question processing tasks
             future_to_qa = {}
             for qa_idx, qa in enumerate(qa_list):
                 future = executor.submit(self._process_single_question, qa, qa_idx)
                 future_to_qa[future] = (qa, qa_idx)
-            
+
             # Collect results as they complete, maintain order
             results_dict = {}
             for future in concurrent.futures.as_completed(future_to_qa):
@@ -834,9 +866,9 @@ Return ONLY the JSON, no other text.
                 try:
                     result = future.result()
                     results_dict[qa_idx] = result
-                    print(f"[Parallel Testing] Question {qa_idx+1} completed")
+                    print(f"[Parallel Testing] Question {qa_idx + 1} completed")
                 except Exception as e:
-                    print(f"[Parallel Testing] Question {qa_idx+1} failed: {e}")
+                    print(f"[Parallel Testing] Question {qa_idx + 1} failed: {e}")
                     # Create a default result for failed questions
                     results_dict[qa_idx] = {
                         'question': qa.question,
@@ -849,13 +881,13 @@ Return ONLY the JSON, no other text.
                         'num_retrieved': 0,
                         'metrics': {}
                     }
-            
+
             # Sort results by qa_idx to maintain original order
             for qa_idx in sorted(results_dict.keys()):
                 sample_results.append(results_dict[qa_idx])
-        
+
         return sample_results
-    
+
     def _process_single_question(self, qa, qa_idx: int):
         """Process a single question and return result"""
         question = qa.question
@@ -868,7 +900,7 @@ Return ONLY the JSON, no other text.
         else:
             reference_answer = qa.final_answer
 
-        print(f"\n[Q{qa_idx+1}] Category {category}: {question}")
+        print(f"\n[Q{qa_idx + 1}] Category {category}: {question}")
 
         # Measure retrieval time
         # For category 5 (adversarial), disable reflection since "no answer means no answer"
@@ -896,8 +928,8 @@ Return ONLY the JSON, no other text.
         # Calculate metrics
         if reference_answer:
             metrics = calculate_metrics(
-                answer, 
-                reference_answer, 
+                answer,
+                reference_answer,
                 question=question,
                 judge_client=self.judge_client,
                 use_llm_judge=self.use_llm_judge
@@ -942,14 +974,15 @@ Return ONLY the JSON, no other text.
             'metrics': metrics
         }
 
-    def run_test(self, num_samples: int = None, save_results: bool = True, result_file: str = 'locomo10_test_results.json', enable_parallel_questions: bool = False):
+    def run_test(self, num_samples: int = None, save_results: bool = True,
+                 result_file: str = 'locomo10_test_results.json', enable_parallel_questions: bool = False):
         """Run full test on dataset"""
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print(" SimpleMem LoComo10 Dataset Test".center(80))
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         # Load dataset
-        samples = self.load_dataset(limit=num_samples)
+        samples = self.load_dataset(limit=num_samples)[:1]
         total_samples = len(samples)
 
         all_results = []
@@ -964,15 +997,15 @@ Return ONLY the JSON, no other text.
             all_results.extend(sample_results)
 
         # Calculate aggregate metrics
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print(" Test Summary".center(80))
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         # Timing statistics
         print("Timing Statistics:")
-        print(f"  Average retrieval time: {sum(self.retrieval_times)/len(self.retrieval_times):.3f}s")
-        print(f"  Average answer time: {sum(self.answer_times)/len(self.answer_times):.3f}s")
-        print(f"  Average total time: {sum(self.total_times)/len(self.total_times):.3f}s")
+        print(f"  Average retrieval time: {sum(self.retrieval_times) / len(self.retrieval_times):.3f}s")
+        print(f"  Average answer time: {sum(self.answer_times) / len(self.answer_times):.3f}s")
+        print(f"  Average total time: {sum(self.total_times) / len(self.total_times):.3f}s")
         print(f"  Total retrieval time: {sum(self.retrieval_times):.2f}s")
         print(f"  Total answer time: {sum(self.answer_times):.2f}s")
 
@@ -987,7 +1020,7 @@ Return ONLY the JSON, no other text.
             metrics_to_show = ['f1', 'rougeL_f', 'bert_f1', 'sbert_similarity']
             if self.use_llm_judge:
                 metrics_to_show.append('llm_judge_score')
-            
+
             for metric_name in metrics_to_show:
                 if metric_name in overall:
                     stats = overall[metric_name]
@@ -1012,18 +1045,18 @@ Return ONLY the JSON, no other text.
                     'summary': {
                         'num_samples': total_samples,
                         'num_questions': len(all_results),
-                        'avg_retrieval_time': sum(self.retrieval_times)/len(self.retrieval_times),
-                        'avg_answer_time': sum(self.answer_times)/len(self.answer_times),
-                        'avg_total_time': sum(self.total_times)/len(self.total_times),
+                        'avg_retrieval_time': sum(self.retrieval_times) / len(self.retrieval_times),
+                        'avg_answer_time': sum(self.answer_times) / len(self.answer_times),
+                        'avg_total_time': sum(self.total_times) / len(self.total_times),
                     },
                     'aggregated_metrics': aggregated if self.metrics_list else {},
                     'detailed_results': all_results
                 }, f, indent=2)
             print(f"\nResults saved to {output_file}")
 
-        print("\n" + "="*80)
+        print("\n" + "=" * 80)
         print(" Test Complete!".center(80))
-        print("="*80 + "\n")
+        print("=" * 80 + "\n")
 
         return all_results
 
@@ -1033,19 +1066,19 @@ def main():
 
     parser = argparse.ArgumentParser(description='Test SimpleMem on LoComo10 dataset')
     parser.add_argument('--dataset', type=str, default='test_ref/locomo10.json',
-                       help='Path to LoComo10 dataset')
+                        help='Path to LoComo10 dataset')
     parser.add_argument('--num-samples', type=int, default=None,
-                       help='Number of samples to test (default: all)')
+                        help='Number of samples to test (default: all)')
     parser.add_argument('--no-save', action='store_true',
-                       help='Do not save results to file')
+                        help='Do not save results to file')
     parser.add_argument('--result-file', type=str, default='locomo10_test_results.json',
-                       help='Path to the result file')
+                        help='Path to the result file')
     parser.add_argument('--parallel-questions', action='store_true',
-                       help='Enable parallel processing of questions within each sample')
+                        help='Enable parallel processing of questions within each sample')
     parser.add_argument('--llm-judge', action='store_true',
-                       help='Enable LLM-as-judge evaluation for semantic answer comparison')
+                        help='Enable LLM-as-judge evaluation for semantic answer comparison')
     parser.add_argument('--test-workers', type=int, default=None,
-                       help='Number of parallel workers for question testing (default: use config MAX_RETRIEVAL_WORKERS)')
+                        help='Number of parallel workers for question testing (default: use config MAX_RETRIEVAL_WORKERS)')
 
     args = parser.parse_args()
 
@@ -1055,7 +1088,7 @@ def main():
 
     # Create tester
     tester = LoCoMoTester(system, args.dataset, use_llm_judge=args.llm_judge, test_workers=args.test_workers)
-    
+
     if args.llm_judge:
         print("LLM-as-judge evaluation enabled")
     if args.test_workers:
