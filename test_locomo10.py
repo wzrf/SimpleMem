@@ -3,7 +3,7 @@ LoComo10 Dataset Test for SimpleMem System
 Tests retrieval time, token usage, and answer quality
 """
 from pathlib import Path
-import time
+import time, os
 import json
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
@@ -31,7 +31,7 @@ from simplemem.core.models.memory_entry import Dialogue
 
 # Initialize SentenceTransformer model for semantic similarity
 try:
-    sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
+    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2')
 except Exception as e:
     print(f"Warning: Could not load SentenceTransformer model: {e}")
     sentence_model = None
@@ -304,7 +304,7 @@ def calculate_bleu_scores(prediction: str, reference: str) -> Dict[str, float]:
 def calculate_bert_scores(prediction: str, reference: str) -> Dict[str, float]:
     """Calculate BERTScore for semantic similarity."""
     try:
-        P, R, F1 = bert_score([prediction], [reference], lang='en', verbose=False)
+        P, R, F1 = bert_score([prediction], [reference], lang='en', verbose=False, model_type="/mnt/qjhs-sh-lab-01/models/roberta-large")
         return {
             'bert_precision': P.item(),
             'bert_recall': R.item(),
@@ -780,7 +780,7 @@ Return ONLY the JSON, no other text.
 
         return dialogues
 
-    def test_sample(self, sample: LoCoMoSample, sample_idx: int, enable_parallel_questions: bool = False):
+    def test_sample(self, sample: LoCoMoSample, sample_idx: int, table_name: str, enable_parallel_questions: bool = False):
         """Test a single sample from the dataset"""
         print(f"\n{'=' * 80}")
         print(f"Testing Sample {sample_idx}")
@@ -790,21 +790,20 @@ Return ONLY the JSON, no other text.
         dialogues = self.convert_to_dialogues(sample)
         print(f"Adding {len(dialogues)} dialogues to memory...")
 
-        with open("./test_ref/result_simplerag_fusion_rag_1.0_Qwen2.5-3B-Instruct_qwen2.5-7B_retrieve_5.json") as f:
-            simplerag_res = json.load(f)
-            target_ids = {0, 2, 3, 4, 6, 7, 9}  # 转换为 set，查找效率提升至 O(1)
-
-            # 生成字典时直接添加筛选条件
-            simplerag_res_q = {
-                x["question"]: x["sample_id"]
-                for x in simplerag_res
-                if x["sample_id"] in target_ids
-            }
-            sample.qa = [qa for qa in sample.qa if qa.question in simplerag_res_q]
+        sample.qa = sample.qa[:1]
 
         add_start = time.time()
-        self.system.add_dialogues(dialogues)
-        self.system.finalize()
+
+        build_flag = f"./lancedb_data/{table_name}.flag"
+        if not os.path.exists(build_flag):
+            self.system.vector_store.clear()
+            self.system.add_dialogues(dialogues)
+            self.system.finalize()
+            with open(build_flag, "w", encoding="utf-8") as f:
+                f.write("build_complete")
+        else:
+            print(f"{table_name} already built.")
+
         add_time = time.time() - add_start
         print(f"Memory building time: {add_time:.2f}s")
 
@@ -982,18 +981,17 @@ Return ONLY the JSON, no other text.
         print("=" * 80 + "\n")
 
         # Load dataset
-        samples = self.load_dataset(limit=num_samples)[:1]
+        samples = self.load_dataset(limit=num_samples)
         total_samples = len(samples)
 
         all_results = []
 
         # Test each sample
         for sample_idx, sample in enumerate(samples):
-            # Clear system for each sample
-            self.system.vector_store.clear()
+            table_name = f"locomo_{sample.sample_id}"
+            self.system = SimpleMemSystem(clear_db=False, table_name=table_name)  ##mengyao_debug
 
-            # Test sample
-            sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions)
+            sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions, table_name=table_name)
             all_results.extend(sample_results)
 
         # Calculate aggregate metrics
@@ -1084,10 +1082,9 @@ def main():
 
     # Create system
     print("Initializing SimpleMem system...")
-    system = SimpleMemSystem(clear_db=True)
 
     # Create tester
-    tester = LoCoMoTester(system, args.dataset, use_llm_judge=args.llm_judge, test_workers=args.test_workers)
+    tester = LoCoMoTester(None, args.dataset, use_llm_judge=args.llm_judge, test_workers=args.test_workers)
 
     if args.llm_judge:
         print("LLM-as-judge evaluation enabled")

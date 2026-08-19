@@ -62,17 +62,17 @@ class LLMClient:
         # Enable thinking mode if configured (for Qwen and compatible models only)
         # Only add enable_thinking parameter for Qwen API (identified by base_url)
         is_qwen_api = self.base_url and "dashscope.aliyuncs.com" in self.base_url
-        
-        if is_qwen_api:
-            # Qwen API requires explicit enable_thinking parameter
-            # - Streaming + thinking: enable_thinking=True
-            # - Non-streaming: enable_thinking=False (required, not optional)
-            # - JSON format: enable_thinking=False (incompatible with thinking mode)
+
+        if is_qwen_api or "qwen" in self.model:
+            # 1. 确保 kwargs 中初始化了 extra_body 字典
+            if "extra_body" not in kwargs or kwargs["extra_body"] is None:
+                kwargs["extra_body"] = {}
+
+            # 2. 将 chat_template_kwargs 放入 extra_body 中
             if self.use_streaming and self.enable_thinking and not response_format:
-                kwargs["extra_body"] = {"enable_thinking": True}
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True}
             else:
-                # Explicitly set to False for non-streaming calls or JSON format
-                kwargs["extra_body"] = {"enable_thinking": False}
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": False}
         # For OpenAI and other APIs, don't add extra_body parameters
 
         # Retry mechanism
@@ -155,6 +155,7 @@ class LLMClient:
             "Result:",
             "Output:",
             "Answer:",
+            "</think>"
         ]
         for prefix in common_prefixes:
             if text.lower().startswith(prefix.lower()):

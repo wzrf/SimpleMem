@@ -144,6 +144,7 @@ class LanceDBVectorStoreBackend:
             print(f"Created new table: {self.table_name}")
         else:
             self.table = self.db.open_table(self.table_name)
+            print("existing rows:", self.table.count_rows())
             print(f"Opened existing table: {self.table_name}")
 
     def _init_fts_index(self) -> None:
