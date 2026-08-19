@@ -24,6 +24,7 @@ class SimpleMemSystem:
     """
     def __init__(
         self,
+        embedding_model,
         api_key: Optional[str] = None,
         model: Optional[str] = None,
         base_url: Optional[str] = None,
@@ -72,7 +73,7 @@ class SimpleMemSystem:
             enable_thinking=enable_thinking,
             use_streaming=use_streaming
         )
-        self.embedding_model = EmbeddingModel()
+        self.embedding_model = embedding_model
         self.vector_store = VectorStore(
             db_path=db_path,
             embedding_model=self.embedding_model,

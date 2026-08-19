@@ -7,6 +7,8 @@ import time, os
 import json
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
+
+from openai.types import embedding_model
 # import tiktoken  # Removed - token counting disabled
 from tqdm import tqdm
 import statistics
@@ -18,6 +20,8 @@ from rouge_score import rouge_scorer
 from bert_score import score as bert_score
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import pytorch_cos_sim
+from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+from simplemem.core.utils.embedding import EmbeddingModel
 
 from main import SimpleMemSystem
 from simplemem.core.models.memory_entry import Dialogue
@@ -790,7 +794,7 @@ Return ONLY the JSON, no other text.
         dialogues = self.convert_to_dialogues(sample)
         print(f"Adding {len(dialogues)} dialogues to memory...")
 
-        sample.qa = sample.qa[:1]
+        sample.qa = sample.qa[:TOTAL_QA_SAMPLE]
 
         add_start = time.time()
 
@@ -973,26 +977,21 @@ Return ONLY the JSON, no other text.
             'metrics': metrics
         }
 
-    def run_test(self, num_samples: int = None, save_results: bool = True,
-                 result_file: str = 'locomo10_test_results.json', enable_parallel_questions: bool = False):
+    def run_test(self, embedding_model, num_samples: int = None, save_results: bool = True,
+                 result_file: str = 'locomo10_test_results.json', enable_parallel_questions: bool = False, sample=None, sample_idx: int = None):
         """Run full test on dataset"""
         print("\n" + "=" * 80)
         print(" SimpleMem LoComo10 Dataset Test".center(80))
         print("=" * 80 + "\n")
 
-        # Load dataset
-        samples = self.load_dataset(limit=num_samples)
-        total_samples = len(samples)
-
         all_results = []
 
         # Test each sample
-        for sample_idx, sample in enumerate(samples):
-            table_name = f"locomo_{sample.sample_id}"
-            self.system = SimpleMemSystem(clear_db=False, table_name=table_name)  ##mengyao_debug
+        table_name = f"locomo_{sample.sample_id}"
+        self.system = SimpleMemSystem(embedding_model=embedding_model, clear_db=False, table_name=table_name)  ##mengyao_debug
 
-            sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions, table_name=table_name)
-            all_results.extend(sample_results)
+        sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions, table_name=table_name)
+        all_results.extend(sample_results)
 
         # Calculate aggregate metrics
         print("\n" + "=" * 80)
@@ -1041,7 +1040,6 @@ Return ONLY the JSON, no other text.
             with open(output_file, 'w') as f:
                 json.dump({
                     'summary': {
-                        'num_samples': total_samples,
                         'num_questions': len(all_results),
                         'avg_retrieval_time': sum(self.retrieval_times) / len(self.retrieval_times),
                         'avg_answer_time': sum(self.answer_times) / len(self.answer_times),
@@ -1059,7 +1057,7 @@ Return ONLY the JSON, no other text.
         return all_results
 
 
-def main():
+if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description='Test SimpleMem on LoComo10 dataset')
@@ -1084,21 +1082,55 @@ def main():
     print("Initializing SimpleMem system...")
 
     # Create tester
-    tester = LoCoMoTester(None, args.dataset, use_llm_judge=args.llm_judge, test_workers=args.test_workers)
+    tester_loader = LoCoMoTester(None, args.dataset, use_llm_judge=args.llm_judge, test_workers=args.test_workers)
 
     if args.llm_judge:
         print("LLM-as-judge evaluation enabled")
     if args.test_workers:
         print(f"Using {args.test_workers} test workers for parallel question processing")
 
-    # Run test
-    results = tester.run_test(
-        num_samples=args.num_samples,
-        save_results=not args.no_save,
-        result_file=args.result_file,
-        enable_parallel_questions=args.parallel_questions
-    )
+    samples = tester_loader.load_dataset()
+    total_samples = len(samples)
+
+    print(f"Total samples: {total_samples}")
+
+    ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
+    MAX_PARALLEL = 2
+    TOTAL_QA_SAMPLE = 10
+
+    def run_sample(sample_idx, sample, embedding_model):
+        tester = LoCoMoTester(
+            None,
+            args.dataset,
+            use_llm_judge=args.llm_judge,
+            test_workers=args.test_workers,
+        )
+
+        return tester.run_test(
+            embedding_model=embedding_model,
+            num_samples=args.num_samples,
+            save_results=not args.no_save,
+            result_file=f"./results/locomo_{sample_idx}.json",
+            enable_parallel_questions=args.parallel_questions,
+            sample_idx=sample_idx,
+            sample=sample,
+        )
 
 
-if __name__ == "__main__":
-    main()
+    embedding_models = []
+    for _ in range(MAX_PARALLEL):
+        embedding_models.append(EmbeddingModel())
+
+    with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as executor:
+        futures = [
+            executor.submit(
+                run_sample,
+                sample_idx,
+                sample,
+                embedding_models[sample_idx % MAX_PARALLEL],
+            )
+            for sample_idx, sample in enumerate(samples)
+        ]
+
+        for future in as_completed(futures):
+            future.result()

@@ -1,7 +1,7 @@
 """Provider-neutral facade for SimpleMem's three retrieval paths."""
 
 from typing import Any, Callable, Dict, List, Optional
-
+import os
 from simplemem.core.database.vector_store_backend import (
     LanceDBVectorStoreBackend,
     VectorStoreBackend,
@@ -28,6 +28,8 @@ class VectorStore:
         backend_factory: Optional[BackendFactory] = None,
     ):
         self.db_path = db_path or config.LANCEDB_PATH
+        # self.db_path = f"{self.db_path}/{table_name}"
+        # os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
         self.embedding_model = embedding_model or EmbeddingModel()
         self.table_name = table_name or config.MEMORY_TABLE_NAME
         self.storage_options = storage_options

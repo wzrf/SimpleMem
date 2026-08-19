@@ -19,7 +19,8 @@ class EmbeddingModel:
         print(f"Loading embedding model: {self.model_name}")
         
         # Check if it's a Qwen3 model (through SentenceTransformers)
-        if self.model_name.startswith("qwen3"):
+        # if self.model_name.startswith("qwen3"):
+        if "qwen3" in self.model_name.lower():
             self._init_qwen3_sentence_transformer()
         else:
             self._init_standard_sentence_transformer()
