@@ -54,6 +54,16 @@ class MemoryBuilder:
 
         # Previous window entries (for context)
         self.previous_entries: List[MemoryEntry] = []
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+        self.llm_calls = 0
+
+    def stats(self):
+        return {
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+            "calls": self.llm_calls,
+        }
 
     def add_dialogue(self, dialogue: Dialogue, auto_process: bool = True):
         """
@@ -207,11 +217,14 @@ class MemoryBuilder:
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response = self.llm_client.chat_completion(
+                response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
                     temperature=0.1,
                     response_format=response_format
                 )
+                self.llm_calls += 1
+                self.prompt_tokens += prompt_tokens
+                self.completion_tokens += completion_tokens
 
                 # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)
@@ -414,14 +427,17 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response = self.llm_client.chat_completion(
+                response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
                     temperature=0.1,
-                    response_format=response_format
+                    response_format=response_format,
                 )
 
                 # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)
+                self.llm_calls += 1
+                self.prompt_tokens += prompt_tokens
+                self.completion_tokens += completion_tokens
                 print(f"[Worker {window_num}] Generated {len(entries)} entries")
                 return entries
 

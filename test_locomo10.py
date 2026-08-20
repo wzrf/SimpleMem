@@ -805,6 +805,11 @@ Return ONLY the JSON, no other text.
             self.system.finalize()
             with open(build_flag, "w", encoding="utf-8") as f:
                 f.write("build_complete")
+
+            token_consumtion_result = f"{TOKEN_CONSUMPTION}/locomo_{sample_idx}.json"
+            with open(token_consumtion_result, "w", encoding="utf-8") as f:
+                json.dump(self.system.memory_builder.stats(), f, indent=4)
+
         else:
             print(f"{table_name} already built.")
 
@@ -1095,7 +1100,11 @@ if __name__ == "__main__":
     print(f"Total samples: {total_samples}")
 
     ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
-    MAX_PARALLEL = 2
+    TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo/"
+    os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
+    MAX_PARALLEL = 16
+    if os.environ.get('DEBUG') == "1":
+        MAX_PARALLEL = 1
     TOTAL_QA_SAMPLE = 10
 
     def run_sample(sample_idx, sample, embedding_model):

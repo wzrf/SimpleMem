@@ -50,6 +50,9 @@ class MemoryBuilder:
         self.dialogue_buffer: List[Dialogue] = []
         self.processed_count = 0
 
+        self.prompt_tokens = 0
+        self.completion_tokens = 0
+
         # Previous window entries (for context)
         self.previous_entries: List[MemoryEntry] = []
 
@@ -199,11 +202,13 @@ class MemoryBuilder:
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response = self.llm_client.chat_completion(
+                response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
                     temperature=0.1,
                     response_format=response_format
                 )
+                self.prompt_tokens += prompt_tokens
+                self.completion_tokens += completion_tokens
 
                 # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)
@@ -406,11 +411,14 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response = self.llm_client.chat_completion(
+                response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
                     temperature=0.1,
                     response_format=response_format
                 )
+
+                self.prompt_tokens += prompt_tokens
+                self.completion_tokens += completion_tokens
 
                 # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)

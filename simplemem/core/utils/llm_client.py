@@ -40,6 +40,70 @@ class LLMClient:
             api_key=self.api_key,
         )
 
+    def chat_completion_with_token_comsumption(
+            self,
+            messages: List[Dict[str, str]],
+            temperature: float = 0.2,
+            response_format: Optional[Dict[str, str]] = None,
+            max_retries: int = 3
+    ) -> (str, int, int):
+        """
+        Standard chat completion with optional thinking mode and retry mechanism
+        """
+        kwargs = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": 25000,
+        }
+
+        if response_format:
+            kwargs["response_format"] = response_format
+
+        # Enable thinking mode if configured (for Qwen and compatible models only)
+        # Only add enable_thinking parameter for Qwen API (identified by base_url)
+        is_qwen_api = self.base_url and "dashscope.aliyuncs.com" in self.base_url
+
+        if is_qwen_api or "qwen" in self.model:
+            # 1. 确保 kwargs 中初始化了 extra_body 字典
+            if "extra_body" not in kwargs or kwargs["extra_body"] is None:
+                kwargs["extra_body"] = {}
+
+            # 2. 将 chat_template_kwargs 放入 extra_body 中
+            if self.use_streaming and self.enable_thinking and not response_format:
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True}
+            else:
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": False}
+        # For OpenAI and other APIs, don't add extra_body parameters
+
+        # Retry mechanism
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                # Use streaming if configured
+                if self.use_streaming:
+                    kwargs["stream"] = True
+                    return self._handle_streaming_response(**kwargs)
+                else:
+                    response = self.client.chat.completions.create(**kwargs)
+                    return response.choices[0].message.content, response.usage.prompt_tokens, response.usage.completion_tokens
+
+
+            except Exception as e:
+                # print(e)
+                last_exception = e
+                if attempt < max_retries - 1:
+                    import time
+                    wait_time = (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s
+                    print(f"LLM API call failed (attempt {attempt + 1}/{max_retries}): {e}")
+                    print(f"Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"LLM API call failed after {max_retries} attempts: {e}")
+
+        # If all retries failed, raise the last exception
+        raise last_exception
+
     def chat_completion(
         self,
         messages: List[Dict[str, str]],
