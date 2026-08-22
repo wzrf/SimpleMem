@@ -1,3 +1,6 @@
+token_consumption_build_memory*
+results/
+results_longmem/
 # Python cache files
 __pycache__/
 *.py[cod]
