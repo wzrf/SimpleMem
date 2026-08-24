@@ -668,7 +668,7 @@ class LoCoMoTester:
         self.metrics_list = []
         self.categories = []
 
-    def generate_category5_answer(self, question: str, contexts: List, adversarial_answer: str) -> str:
+    def generate_category5_answer(self, question: str, contexts: List, adversarial_answer: str) -> (str, int, int):
         """
         Special answer generation for category 5 (adversarial questions).
         Ask model to choose between "Not mentioned in the conversation" and the adversarial answer.
@@ -734,7 +734,7 @@ Return ONLY the JSON, no other text.
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response = self.system.llm_client.chat_completion(
+                response, p_t, c_t = self.system.llm_client.chat_completion_with_token_comsumption(
                     messages,
                     temperature=0.5,  # Higher temperature for category 5
                     response_format=response_format,
@@ -743,14 +743,14 @@ Return ONLY the JSON, no other text.
 
                 # Parse JSON response
                 result = self.system.llm_client.extract_json(response)
-                return result.get("answer", response.strip())
+                return result.get("answer", response.strip()), p_t, c_t
 
             except Exception as e:
                 if attempt < max_retries - 1:
                     print(f"Category 5 answer generation attempt {attempt + 1}/{max_retries} failed: {e}. Retrying...")
                 else:
                     print(f"Warning: Failed to generate category 5 answer after {max_retries} attempts: {e}")
-                    return "Not mentioned in the conversation"  # Default to safe answer
+                    return "Not mentioned in the conversation", 0, 0  # Default to safe answer
 
     def load_dataset(self, limit: int = None) -> List[LoCoMoSample]:
         """Load LoComo10 dataset"""
@@ -914,9 +914,9 @@ Return ONLY the JSON, no other text.
         # For category 5 (adversarial), disable reflection since "no answer means no answer"
         retrieval_start = time.time()
         if category == 5:
-            contexts = self.system.hybrid_retriever.retrieve(question, enable_reflection=False)
+            contexts, prompt_tokens, completion_tokens = self.system.hybrid_retriever.retrieve(question, enable_reflection=False)
         else:
-            contexts = self.system.hybrid_retriever.retrieve(question)
+            contexts, prompt_tokens, completion_tokens = self.system.hybrid_retriever.retrieve(question)
         retrieval_time = time.time() - retrieval_start
 
         # Measure answer generation time
@@ -925,9 +925,11 @@ Return ONLY the JSON, no other text.
         # Use special answer generation for category 5
         if category == 5:
             adversarial_answer = qa.adversarial_answer if qa.adversarial_answer else "Unknown answer"
-            answer = self.generate_category5_answer(question, contexts, adversarial_answer)
+            answer, p_t, c_t = self.generate_category5_answer(question, contexts, adversarial_answer)
         else:
-            answer = self.system.answer_generator.generate_answer(question, contexts)
+            answer, p_t, c_t = self.system.answer_generator.generate_answer_with_token_consumptions(question, contexts)
+        prompt_tokens += p_t
+        completion_tokens += c_t
 
         answer_time = time.time() - answer_start
 
@@ -977,6 +979,8 @@ Return ONLY the JSON, no other text.
             'category': category,
             'retrieval_time': retrieval_time,
             'answer_time': answer_time,
+            'prompt_tokens': prompt_tokens,
+            'completion_tokens': completion_tokens,
             'total_time': total_time,
             'num_retrieved': len(contexts),
             'metrics': metrics
@@ -1105,7 +1109,8 @@ if __name__ == "__main__":
     MAX_PARALLEL = 16
     if os.environ.get('DEBUG') == "1":
         MAX_PARALLEL = 1
-    TOTAL_QA_SAMPLE = 10
+        args.parallel_questions = False
+    TOTAL_QA_SAMPLE = 1000
 
     def run_sample(sample_idx, sample, embedding_model):
         tester = LoCoMoTester(

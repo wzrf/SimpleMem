@@ -7,6 +7,8 @@ from dataclasses import dataclass
 from typing import List, Dict, Optional, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from grpc.framework.interfaces.base.utilities import completion
+
 from main import SimpleMemSystem
 from simplemem.core.models.memory_entry import Dialogue
 from simplemem.core.utils.embedding import EmbeddingModel
@@ -89,6 +91,8 @@ class LongMemEvalTester:
 
         dialogues = self.convert_to_dialogues(sample)
         build_flag = f"./lancedb_data/{table_name}.flag"
+        prompt_tokens = 0
+        completion_tokens = 0
 
         # 构建向量存储
         if not os.path.exists(build_flag):
@@ -106,11 +110,15 @@ class LongMemEvalTester:
 
         # 检索与生成答案
         retrieval_start = time.time()
-        contexts = system.hybrid_retriever.retrieve(sample.question)
+        contexts, p_t, c_t = system.hybrid_retriever.retrieve(sample.question)
+        prompt_tokens += p_t
+        completion_tokens += c_t
         retrieval_time = time.time() - retrieval_start
 
         answer_start = time.time()
-        answer = system.answer_generator.generate_answer(sample.question, contexts)
+        answer, p_t, c_t = system.answer_generator.generate_answer_with_token_consumptions(sample.question, contexts)
+        prompt_tokens += p_t
+        completion_tokens += c_t
         answer_time = time.time() - answer_start
 
         total_time = retrieval_time + answer_time
@@ -130,6 +138,8 @@ class LongMemEvalTester:
             'question': sample.question,
             'answer': answer,
             'reference': sample.answer,
+            'prompt_tokens': prompt_tokens,
+            'completion_tokens': completion_tokens,
             'retrieval_time': retrieval_time,
             'answer_time': answer_time,
             'total_time': total_time,

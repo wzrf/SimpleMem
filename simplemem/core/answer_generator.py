@@ -19,6 +19,69 @@ class AnswerGenerator:
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
 
+    def generate_answer_with_token_consumptions(self, query: str, contexts: List[MemoryEntry]) -> (str, int, int):
+        """
+        Generate answer
+
+        Args:
+        - query: User question
+        - contexts: List of retrieved relevant MemoryEntry
+
+        Returns:
+        - Generated answer (concise phrase)
+        """
+        if not contexts:
+            return "No relevant information found", 0, 0
+
+        # Build context string
+        context_str = self._format_contexts(contexts)
+
+        # Build prompt
+        prompt = self._build_answer_prompt(query, context_str)
+
+        # Call LLM to generate answer
+        messages = [
+            {
+                "role": "system",
+                "content": "You are a professional Q&A assistant. Extract concise answers from context. You must output valid JSON format."
+            },
+            {
+                "role": "user",
+                "content": prompt
+            }
+        ]
+
+        # Retry up to 3 times
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Use JSON format if configured
+                response_format = None
+                if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
+                    response_format = {"type": "json_object"}
+
+                response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
+                    messages,
+                    temperature=0.1,
+                    response_format=response_format
+                )
+
+                # Parse JSON response
+                result = self.llm_client.extract_json(response)
+                # Return the answer from JSON
+                return result.get("answer", response.strip()), p_t, c_t
+
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"Answer generation attempt {attempt + 1}/{max_retries} failed: {e}. Retrying...")
+                else:
+                    print(f"Warning: Failed to parse JSON response after {max_retries} attempts: {e}")
+                    # Fallback to raw response
+                    if 'response' in locals():
+                        return response.strip(), 0, 0
+                    else:
+                        return "Failed to generate answer", 0, 0
+
     def generate_answer(self, query: str, contexts: List[MemoryEntry]) -> str:
         """
         Generate answer
