@@ -170,7 +170,7 @@ if __name__ == "__main__":
 
     TOKEN_CONSUMPTION = "token_consumption_build_memory_longmemeval/"
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
-    MAX_PARALLEL = 16 ##mengyao_debug
+    MAX_PARALLEL = 10 ##mengyao_debug
     if os.environ.get('DEBUG') == "1":
         MAX_PARALLEL = 1
     

@@ -6,6 +6,8 @@ from typing import List, Optional, Dict, Any
 import numpy as np
 from simplemem.core.settings import settings as config
 import os
+import threading
+
 
 
 class EmbeddingModel:
@@ -15,6 +17,7 @@ class EmbeddingModel:
     def __init__(self, model_name: str = None, use_optimization: bool = True):
         self.model_name = model_name or config.EMBEDDING_MODEL
         self.use_optimization = use_optimization
+        self.lock = threading.Lock()
         
         print(f"Loading embedding model: {self.model_name}")
         
@@ -48,7 +51,7 @@ class EmbeddingModel:
                         model_path,
                         model_kwargs={
                             "attn_implementation": "flash_attention_2", 
-                            "device_map": "auto"
+                            "device_map": "cuda"
                         },
                         tokenizer_kwargs={"padding_side": "left"},
                         trust_remote_code=True
@@ -56,7 +59,7 @@ class EmbeddingModel:
                     print("Qwen3 loaded with flash_attention_2 optimization")
                 except Exception as e:
                     print(f"Flash attention failed ({e}), using standard loading...")
-                    self.model = SentenceTransformer(model_path, trust_remote_code=True)
+                    self.model = SentenceTransformer(model_path, trust_remote_code=True, device='cuda')
             else:
                 self.model = SentenceTransformer(model_path, trust_remote_code=True)
             
@@ -105,7 +108,7 @@ class EmbeddingModel:
         """
         if isinstance(texts, str):
             texts = [texts]
-        
+
         # Use query prompt for Qwen3 models when encoding queries
         if self.model_type == "qwen3_sentence_transformer" and self.supports_query_prompt and is_query:
             return self._encode_with_query_prompt(texts)
@@ -136,23 +139,25 @@ class EmbeddingModel:
     
     def _encode_with_query_prompt(self, texts: List[str]) -> np.ndarray:
         """Encode texts using Qwen3 query prompt"""
-        try:
+        with self.lock:
+            try:
+                embeddings = self.model.encode(
+                    texts,
+                    prompt_name="query",  # Use Qwen3's query prompt
+                    show_progress_bar=False,
+                    normalize_embeddings=True
+                )
+                return embeddings
+            except Exception as e:
+                print(f"Query prompt encoding failed: {e}, falling back to standard encoding")
+                return self._encode_standard(texts)
+    
+    def _encode_standard(self, texts: List[str]) -> np.ndarray:
+        """Encode texts using standard method"""
+        with self.lock:
             embeddings = self.model.encode(
-                texts, 
-                prompt_name="query",  # Use Qwen3's query prompt
+                texts,
                 show_progress_bar=False,
                 normalize_embeddings=True
             )
             return embeddings
-        except Exception as e:
-            print(f"Query prompt encoding failed: {e}, falling back to standard encoding")
-            return self._encode_standard(texts)
-    
-    def _encode_standard(self, texts: List[str]) -> np.ndarray:
-        """Encode texts using standard method"""
-        embeddings = self.model.encode(
-            texts, 
-            show_progress_bar=False,
-            normalize_embeddings=True
-        )
-        return embeddings

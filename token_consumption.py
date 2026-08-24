@@ -36,6 +36,9 @@ def process_eval_dataset(
     global_f1s = []
     global_bleu1s = []
 
+    question_prompt_tokens = []
+    question_completion_tokens = []
+
     if result_folder.exists():
         for file_path in result_folder.glob("**/*.json"):
             try:
@@ -61,6 +64,9 @@ def process_eval_dataset(
                                 bleu1_val
                             )
                             global_bleu1s.append(bleu1_val)
+                        if "prompt_tokens" in item and "completion_tokens" in item:
+                            question_prompt_tokens.append(item.get("prompt_tokens"))
+                            question_completion_tokens.append(item.get("completion_tokens"))
 
                 # 情况 B：单个 JSON 对应单个样本 (如 question_type + metrics)
                 elif "metrics" in data:
@@ -76,6 +82,9 @@ def process_eval_dataset(
                     if bleu1_val is not None:
                         metrics_by_category[cat_key]["bleu1"].append(bleu1_val)
                         global_bleu1s.append(bleu1_val)
+                    if "prompt_tokens" in data and "completion_tokens" in data:
+                        question_prompt_tokens.append(data.get("prompt_tokens"))
+                        question_completion_tokens.append(data.get("completion_tokens"))
 
             except Exception as e:
                 print(f"Error reading result file {file_path}: {e}")
@@ -94,10 +103,17 @@ def process_eval_dataset(
         else 0
     )
 
+    avg_prompt_question = sum(question_prompt_tokens) / len(question_prompt_tokens)
+    avg_comletion_question = sum(question_completion_tokens) / len(question_completion_tokens)
+
     print(f"\n================ [{dataset_name}] Summary ================")
     print(
-        f"Average Prompt Tokens    : {avg_prompt:.2f}\n"
-        f"Average Completion Tokens: {avg_comp:.2f}"
+        f"[Build] Average Prompt Tokens    : {avg_prompt:.2f}\n"
+        f"[Build] Average Completion Tokens: {avg_comp:.2f}"
+    )
+    print(
+        f"[question] Average Prompt Tokens    : {avg_prompt_question:.2f}\n"
+        f"[question] Average Completion Tokens: {avg_comletion_question:.2f}"
     )
 
     if metrics_by_category:
