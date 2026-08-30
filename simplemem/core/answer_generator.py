@@ -8,7 +8,7 @@ from typing import List
 from simplemem.core.models.memory_entry import MemoryEntry
 from simplemem.core.utils.llm_client import LLMClient
 from simplemem.core.settings import settings as config
-
+import os
 
 class AnswerGenerator:
     """
@@ -19,6 +19,7 @@ class AnswerGenerator:
     def __init__(self, llm_client: LLMClient):
         self.llm_client = llm_client
 
+    ## mengyao_debug fusionrag
     def generate_answer_with_token_consumptions(self, query: str, contexts: List[MemoryEntry]) -> (str, int, int):
         """
         Generate answer
@@ -34,10 +35,12 @@ class AnswerGenerator:
             return "No relevant information found", 0, 0
 
         # Build context string
-        context_str = self._format_contexts(contexts)
+        context_str, context_str_list = self._format_contexts_list(contexts)
 
         # Build prompt
         prompt = self._build_answer_prompt(query, context_str)
+
+        prefix, query_prompt = self._build_answer_prompt_fusionrag(query, context_str)
 
         # Call LLM to generate answer
         messages = [
@@ -60,11 +63,19 @@ class AnswerGenerator:
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
 
-                response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
-                    messages,
-                    temperature=0.1,
-                    response_format=response_format
-                )
+                if os.getenv("FUSIONRAG", "").lower() == "true":
+                    response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                        system_prompt="You are a professional Q&A assistant. Extract concise answers from context. You must output valid JSON format.",
+                        prefix=prefix,
+                        fusionrag_cache_list=context_str_list,
+                        query_prompt=query_prompt
+                    )
+                else:
+                    response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
+                        messages,
+                        temperature=0.1,
+                        response_format=response_format
+                    )
 
                 # Parse JSON response
                 result = self.llm_client.extract_json(response)
@@ -173,6 +184,34 @@ class AnswerGenerator:
 
         return "\n\n".join(formatted)
 
+    def _format_contexts_list(self, contexts: List[MemoryEntry]) -> (str, list):
+        """
+        Format contexts to readable text
+        """
+        formatted = []
+        for i, entry in enumerate(contexts, 1):
+            parts = [f"[Context {i}]"]
+            parts.append(f"Content: {entry.lossless_restatement}")
+
+            if entry.timestamp:
+                parts.append(f"Time: {entry.timestamp}")
+
+            if entry.location:
+                parts.append(f"Location: {entry.location}")
+
+            if entry.persons:
+                parts.append(f"Persons: {', '.join(entry.persons)}")
+
+            if entry.entities:
+                parts.append(f"Related Entities: {', '.join(entry.entities)}")
+
+            if entry.topic:
+                parts.append(f"Topic: {entry.topic}")
+
+            formatted.append("\n".join(parts)+"\n")
+
+        return "\n\n".join(formatted), formatted
+
     def _build_answer_prompt(self, query: str, context_str: str) -> str:
         """
         Build answer generation prompt
@@ -184,6 +223,45 @@ User Question: {query}
 
 Relevant Context:
 {context_str}
+
+Requirements:
+1. First, think through the reasoning process
+2. Then provide a very CONCISE answer (short phrase about core information)
+3. Answer must be based ONLY on the provided context
+4. All dates in the response must be formatted as 'DD Month YYYY' but you can output more or less details if needed
+5. Return your response in JSON format
+
+Output Format:
+```json
+{{
+  "reasoning": "Brief explanation of your thought process",
+  "answer": "Concise answer in a short phrase"
+}}
+```
+
+Example:
+Question: "When will they meet?"
+Context: "Alice suggested meeting Bob at 2025-11-16T14:00:00..."
+
+Output:
+```json
+{{
+  "reasoning": "The context explicitly states the meeting time as 2025-11-16T14:00:00",
+  "answer": "16 November 2025 at 2:00 PM"
+}}
+```
+
+Now answer the question. Return ONLY the JSON, no other text.
+"""
+
+    def _build_answer_prompt_fusionrag(self, query: str, context_str: str) -> (str, str):
+        """
+        Build answer generation prompt
+        """
+        return f"""
+Answer the user's question based on the provided context.
+
+Relevant Context:""", f"""User Question: {query}
 
 Requirements:
 1. First, think through the reasoning process

@@ -40,6 +40,7 @@ except Exception as e:
     print(f"Warning: Could not load SentenceTransformer model: {e}")
     sentence_model = None
 
+all_memory_summarize_percentage = []
 
 # ============================================================================
 # Data Structures for LoComo10 Dataset
@@ -798,6 +799,7 @@ Return ONLY the JSON, no other text.
 
         add_start = time.time()
 
+        ##mengyao_debug fusionrag: 这个simple mem的add memory流程里面没有可以复用的cache，就跳过build了
         build_flag = f"./lancedb_data/{table_name}.flag"
         if not os.path.exists(build_flag):
             self.system.vector_store.clear()
@@ -812,6 +814,19 @@ Return ONLY the JSON, no other text.
 
         else:
             print(f"{table_name} already built.")
+
+        from transformers import AutoTokenizer
+        tokenizer = AutoTokenizer.from_pretrained("/mnt/qjhs-sh-lab-01/models/Qwen3-8B", trust_remote_code=True)
+
+        all_entries = self.system.vector_store.get_all_entries()
+        all_summary = "".join(x.lossless_restatement for x in all_entries)
+        all_history = "".join([x.content for x in dialogues])
+
+        all_summary = tokenizer.encode(all_summary, add_special_tokens=True)
+        all_history = tokenizer.encode(all_history, add_special_tokens=True)
+        all_memory_summarize_percentage.append(len(all_summary) / len(all_history))
+        print(f"summary percentage = {sum(all_memory_summarize_percentage) / len(all_memory_summarize_percentage)*100}%")
+
 
         add_time = time.time() - add_start
         print(f"Memory building time: {add_time:.2f}s")
@@ -1000,6 +1015,10 @@ Return ONLY the JSON, no other text.
         self.system = SimpleMemSystem(embedding_model=embedding_model, clear_db=False, table_name=table_name)  ##mengyao_debug
 
         sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions, table_name=table_name)
+
+        if sample_results is None:
+            return
+
         all_results.extend(sample_results)
 
         # Calculate aggregate metrics
@@ -1104,15 +1123,19 @@ if __name__ == "__main__":
     print(f"Total samples: {total_samples}")
 
     ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
+    RESULT_DIR = "./results_locomo"
+    if os.environ.get("FUSIONRAG", "").lower() == "true":
+        RESULT_DIR = "./results_locomo_fusionrag"
     TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo/"
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
+    os.makedirs(RESULT_DIR, exist_ok=True)
     MAX_PARALLEL = 16
     if os.environ.get('DEBUG') == "1":
         MAX_PARALLEL = 1
         args.parallel_questions = False
     TOTAL_QA_SAMPLE = 1000
 
-    def run_sample(sample_idx, sample, embedding_model):
+    def run_sample(sample_idx, sample, embedding_model, save_dir):
         tester = LoCoMoTester(
             None,
             args.dataset,
@@ -1124,16 +1147,14 @@ if __name__ == "__main__":
             embedding_model=embedding_model,
             num_samples=args.num_samples,
             save_results=not args.no_save,
-            result_file=f"./results/locomo_{sample_idx}.json",
+            result_file=f"./{save_dir}/locomo_{sample_idx}.json",
             enable_parallel_questions=args.parallel_questions,
             sample_idx=sample_idx,
             sample=sample,
         )
 
 
-    embedding_models = []
-    for _ in range(MAX_PARALLEL):
-        embedding_models.append(EmbeddingModel())
+    embedding_model = EmbeddingModel()
 
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as executor:
         futures = [
@@ -1141,7 +1162,8 @@ if __name__ == "__main__":
                 run_sample,
                 sample_idx,
                 sample,
-                embedding_models[sample_idx % MAX_PARALLEL],
+                embedding_model,
+                RESULT_DIR
             )
             for sample_idx, sample in enumerate(samples)
         ]

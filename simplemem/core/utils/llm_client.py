@@ -5,6 +5,8 @@ import json
 from typing import List, Dict, Any, Optional
 from openai import OpenAI
 from simplemem.core.settings import settings as config
+from simplemem.core.fusionrag.run_question import FusionRAGModel
+from simplemem.core.fusionrag.sglang_kvcache import run_one_question_sglang
 
 
 class LLMClient:
@@ -24,6 +26,22 @@ class LLMClient:
         self.base_url = base_url or config.OPENAI_BASE_URL
         self.enable_thinking = enable_thinking if enable_thinking is not None else config.ENABLE_THINKING
         self.use_streaming = use_streaming if use_streaming is not None else config.USE_STREAMING
+        self.recomputation_rate = 0.3
+        self.sglang_url = "http://127.0.0.1:30003/v1/completions"
+        self.sglang_url_prefiller = "http://127.0.0.1:30003/v1/completions"
+        self.fusion_rag_model = FusionRAGModel(
+            model_path='',
+            use_multi_gpu=True,
+            model_type="qwen3",
+            model_name="Qwen3-32B",
+            draft_model_type="qwen",
+            draft_model_name="qwen2.5-3b",
+            preprocess_model_path="/data2/qy_tmp/xumengyao/bge-m3",
+            draft_model_path="/mnt/qjhs-sh-lab-01/models/Qwen2.5-3B-Instruct",
+            draft_model_url="http://127.0.0.1:30005/v1/completions",
+            apikey="xxx",
+            use_local_draft_model=False,
+        )
 
         # Initialize OpenAI client with optional base_url
         client_kwargs = {"api_key": self.api_key}
@@ -39,6 +57,64 @@ class LLMClient:
             base_url=self.base_url,
             api_key=self.api_key,
         )
+
+    def generate_response_with_fusionrag(
+        self,
+        system_prompt: str,
+        prefix: str,
+        fusionrag_cache_list: list[str],
+        query_prompt: str,
+        model: str="qwen3-8b",
+        max_tokens = 5000
+    ) -> (str, int, int):
+
+        template = {
+            "DEFAULT_SYSTEM_PROMPT": f"""<|im_start|>system\n{system_prompt}\n{prefix}""",
+            "USER_PROMPT": f"""<|im_end|>\n<|im_start|>user\n\nQuestion: /no_think {query_prompt}<|im_end|>\n<|im_start|>assistant\nAnswer: </think>"""
+        }
+
+        recompute_tokens, recompute_tokens_list, retrieved_docs, recompute_rate, sorted_doc_index, sorted_doc_index_before, _ = self.fusion_rag_model.draft_one_question(
+            template["DEFAULT_SYSTEM_PROMPT"],  ## DEFAULT_SYSTEM_PROMPT
+            fusionrag_cache_list,
+            template["USER_PROMPT"],
+            self.recomputation_rate,
+            "",
+            False,
+            False,
+            [],
+            False,
+            False,  ## if do preprocess
+            False,
+            True
+        )
+
+        try:
+            content, usage, top_logprobs, real_recomputation_rate = run_one_question_sglang(
+                DEFAULT_SYSTEM_PROMPT=template["DEFAULT_SYSTEM_PROMPT"],
+                USER_PROMPT=template["USER_PROMPT"],
+                MODEL=model,
+                retrived_docs=fusionrag_cache_list,
+                max_tokens=max_tokens,  ## max tokens.
+                retrived_docs_relevant_docs=[],
+                recompute_tokens=recompute_tokens,
+                recompute_tokens_list=recompute_tokens_list,
+                max_workers=1,  ## max_workers.
+                recomputation_rate=self.recomputation_rate,
+                model_use=model,
+                endpoint_url=self.sglang_url,
+                prefiller_endpoint_url=self.sglang_url_prefiller,
+                method_keyword="",
+            )
+
+            usage_info = {
+                "prompt_tokens": usage["prompt_tokens"],
+                "completion_tokens": usage["completion_tokens"],
+                "total_tokens": usage["total_tokens"],
+            }
+
+            return content, usage["prompt_tokens"], usage["completion_tokens"]
+        except Exception as e:
+            print(e)
 
     def chat_completion_with_token_comsumption(
             self,

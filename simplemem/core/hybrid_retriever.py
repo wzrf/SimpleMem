@@ -6,6 +6,7 @@ Implements:
 - Parallel multi-view retrieval across Semantic, Lexical, Symbolic layers
 - Result merging: C_q = R_sem ∪ R_lex ∪ R_sym
 """
+import os
 from typing import List, Optional, Dict, Any
 from simplemem.core.models.memory_entry import MemoryEntry
 from simplemem.core.utils.llm_client import LLMClient
@@ -565,6 +566,19 @@ Return ONLY the JSON, no other text.
             formatted.append(" | ".join(parts))
         
         return "\n".join(formatted)
+
+    def _format_contexts_for_check_list(self, contexts: List[MemoryEntry]) -> (str, list):
+        """
+        Format contexts for adequacy checking (more concise than full format)
+        """
+        formatted = []
+        for i, entry in enumerate(contexts, 1):
+            parts = [f"[Info {i}] {entry.lossless_restatement}"]
+            if entry.timestamp:
+                parts.append(f"Time: {entry.timestamp}")
+            formatted.append(" | ".join(parts)+"\n")
+
+        return "\n".join(formatted), formatted
     
     def _execute_parallel_searches(self, search_queries: List[str]) -> List[MemoryEntry]:
         """
@@ -853,7 +867,8 @@ Return ONLY the JSON, no other text.
                 break
         
         return current_results, prompt_tokens, completion_tokens
-    
+
+    ## mengyao_debug fusionrag
     def _analyze_information_completeness(self, query: str, current_results: List[MemoryEntry], information_plan: Dict[str, Any]) -> (str, int, int):
         """
         Analyze if current results provide complete information to answer the query
@@ -861,7 +876,7 @@ Return ONLY the JSON, no other text.
         if not current_results:
             return "no_results"
         
-        context_str = self._format_contexts_for_check(current_results)
+        context_str, context_str_list = self._format_contexts_for_check_list(current_results)
         required_info = information_plan.get('required_info', [])
         
         prompt = f"""
@@ -896,18 +911,52 @@ Return ONLY the JSON, no other text.
             {"role": "system", "content": "You are an information completeness evaluator. You must output valid JSON format."},
             {"role": "user", "content": prompt}
         ]
+
+        system_prompt = "You are an information completeness evaluator. You must output valid JSON format."
+        prefix = f"""
+Analyze whether the provided information is sufficient to completely answer the original question, based on the identified information requirements.
+
+Required Information Types: {required_info}
+
+Current Available Information:"""
+        query_prompt = f"""Original Question: {query}
+
+Evaluate whether:
+1. All required information types are addressed
+2. The information is complete enough to provide a comprehensive answer
+3. Any critical gaps remain that would prevent a satisfactory answer
+
+Return your evaluation in JSON format:
+```json
+{{
+  "assessment": "complete" OR "incomplete",
+  "reasoning": "Brief explanation of completeness assessment",
+  "missing_info_types": ["list", "of", "missing", "information", "types"],
+  "coverage_percentage": 85
+}}
+```
+
+Return ONLY the JSON, no other text."""
         
         try:
             # Use JSON format if configured
             response_format = None
             if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                 response_format = {"type": "json_object"}
-                
-            response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
-                messages,
-                temperature=0.1,
-                response_format=response_format
-            )
+
+            if os.getenv("FUSIONRAG", "").lower() == "true":
+                response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                    system_prompt=system_prompt,
+                    prefix=prefix,
+                    fusionrag_cache_list=context_str_list,
+                    query_prompt=query_prompt
+                )
+            else:
+                response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
+                    messages,
+                    temperature=0.1,
+                    response_format=response_format
+                )
             
             result = self.llm_client.extract_json(response)
             assessment = result.get("assessment", "incomplete")
@@ -919,12 +968,13 @@ Return ONLY the JSON, no other text.
         except Exception as e:
             print(f"Failed to analyze information completeness: {e}")
             return "incomplete", 0, 0
-    
+
+    ## mengyao_debug fusionrag
     def _generate_missing_info_queries(self, original_query: str, current_results: List[MemoryEntry], information_plan: Dict[str, Any]) -> (List[str], int, int):
         """
         Generate targeted queries to find missing information
         """
-        context_str = self._format_contexts_for_check(current_results)
+        context_str, context_str_list = self._format_contexts_for_check_list(current_results)
         required_info = information_plan.get('required_info', [])
         
         prompt = f"""
@@ -961,18 +1011,56 @@ Return ONLY the JSON, no other text.
             {"role": "system", "content": "You are a missing information query generator. You must output valid JSON format."},
             {"role": "user", "content": prompt}
         ]
+
+        system_prompt = "You are a missing information query generator. You must output valid JSON format."
+        prefix = f"""
+Based on the original question, required information types, and currently available information, generate targeted search queries to find the missing information needed to answer the question completely.
+
+Required Information Types: {required_info}
+
+Currently Available Information:"""
+        query_prompt = f"""
+Original Question: {original_query}
+
+Generate 1-3 specific search queries that would help find the missing information. Focus on:
+1. Information gaps identified in the current context
+2. Specific missing details needed to answer the original question
+3. Different search angles that might retrieve the missing information
+
+Return your response in JSON format:
+```json
+{{
+  "missing_analysis": "Brief analysis of what specific information is missing",
+  "targeted_queries": [
+    "specific query 1 for missing info",
+    "specific query 2 for missing info",
+    ...
+  ]
+}}
+```
+
+Return ONLY the JSON, no other text.
+"""
         
         try:
             # Use JSON format if configured
             response_format = None
             if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                 response_format = {"type": "json_object"}
-                
-            response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
-                messages,
-                temperature=0.3,
-                response_format=response_format
-            )
+
+            if os.getenv("FUSIONRAG", "").lower() == "true":
+                response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                    system_prompt=system_prompt,
+                    prefix=prefix,
+                    fusionrag_cache_list=context_str_list,
+                    query_prompt=query_prompt
+                )
+            else:
+                response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
+                    messages,
+                    temperature=0.3,
+                    response_format=response_format
+                )
             
             result = self.llm_client.extract_json(response)
             queries = result.get("targeted_queries", [])
