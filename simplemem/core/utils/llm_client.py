@@ -7,7 +7,7 @@ from openai import OpenAI
 from simplemem.core.settings import settings as config
 from simplemem.core.fusionrag.run_question import FusionRAGModel
 from simplemem.core.fusionrag.sglang_kvcache import run_one_question_sglang
-
+import time
 
 class LLMClient:
     """
@@ -68,12 +68,18 @@ class LLMClient:
         max_tokens = 5000
     ) -> (str, int, int):
 
-        template = {
-            "DEFAULT_SYSTEM_PROMPT": f"""<|im_start|>system\n{system_prompt}\n{prefix}""",
-            "USER_PROMPT": f"""<|im_end|>\n<|im_start|>user\n\nQuestion: /no_think {query_prompt}<|im_end|>\n<|im_start|>assistant\nAnswer: </think>"""
-        }
+        if "kimi" in model.lower():
+            template = {
+                "DEFAULT_SYSTEM_PROMPT": f"""<|im_system|>system<|im_middle|>\n{system_prompt}\n{prefix}""",
+                "USER_PROMPT": f"""<|im_end|><|im_user|>user<|im_middle|>{query_prompt}<|im_end|><|im_assistant|>assistant<|im_middle|><think></think> Answer:"""
+            }
+        else:  ## default: qwen
+            template = {
+                "DEFAULT_SYSTEM_PROMPT": f"""<|im_start|>system\n{system_prompt}\n{prefix}""",
+                "USER_PROMPT": f"""<|im_end|>\n<|im_start|>user\n\nQuestion: /no_think {query_prompt}<|im_end|>\n<|im_start|>assistant\nAnswer: </think>"""
+            }
 
-        recompute_tokens, recompute_tokens_list, retrieved_docs, recompute_rate, sorted_doc_index, sorted_doc_index_before, _ = self.fusion_rag_model.draft_one_question(
+        recompute_tokens, recompute_tokens_list, retrieved_docs, recompute_rate, sorted_doc_index, sorted_doc_index_before, selected_indices = self.fusion_rag_model.draft_one_question(
             template["DEFAULT_SYSTEM_PROMPT"],  ## DEFAULT_SYSTEM_PROMPT
             fusionrag_cache_list,
             template["USER_PROMPT"],
@@ -89,6 +95,7 @@ class LLMClient:
         )
 
         try:
+            time_start = time.time()
             content, usage, top_logprobs, real_recomputation_rate = run_one_question_sglang(
                 DEFAULT_SYSTEM_PROMPT=template["DEFAULT_SYSTEM_PROMPT"],
                 USER_PROMPT=template["USER_PROMPT"],
@@ -104,7 +111,9 @@ class LLMClient:
                 endpoint_url=self.sglang_url,
                 prefiller_endpoint_url=self.sglang_url_prefiller,
                 method_keyword="",
+                # recompute_indices=selected_indices
             )
+            fusionrag_answer_time = time.time() - time_start
 
             usage_info = {
                 "prompt_tokens": usage["prompt_tokens"],
@@ -121,16 +130,18 @@ class LLMClient:
             messages: List[Dict[str, str]],
             temperature: float = 0.2,
             response_format: Optional[Dict[str, str]] = None,
-            max_retries: int = 3
+            max_retries: int = 2,
+            use_answer_client: bool = False,
     ) -> (str, int, int):
         """
         Standard chat completion with optional thinking mode and retry mechanism
         """
+        temperature = 0.0
         kwargs = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": 25000,
+            "max_tokens": 15000,
         }
 
         if response_format:
@@ -140,16 +151,16 @@ class LLMClient:
         # Only add enable_thinking parameter for Qwen API (identified by base_url)
         is_qwen_api = self.base_url and "dashscope.aliyuncs.com" in self.base_url
 
-        if is_qwen_api or "qwen" in self.model:
+        if True or is_qwen_api or "qwen" in self.model: ## mengyao_debug for other models like kimi/ds
             # 1. 确保 kwargs 中初始化了 extra_body 字典
             if "extra_body" not in kwargs or kwargs["extra_body"] is None:
                 kwargs["extra_body"] = {}
 
             # 2. 将 chat_template_kwargs 放入 extra_body 中
             if self.use_streaming and self.enable_thinking and not response_format:
-                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True}
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": True, "thinking": False}
             else:
-                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": False}
+                kwargs["extra_body"]["chat_template_kwargs"] = {"enable_thinking": False, "thinking": False}
         # For OpenAI and other APIs, don't add extra_body parameters
 
         # Retry mechanism

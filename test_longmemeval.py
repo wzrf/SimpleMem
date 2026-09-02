@@ -19,6 +19,7 @@ from test_locomo10 import (
     aggregate_metrics,
     create_judge_llm_client
 )
+import config
 
 # ============================================================================
 # LongMemEval 数据结构定义
@@ -84,13 +85,13 @@ class LongMemEvalTester:
                 dialogue_id += 1
         return dialogues
 
-    def run_single_sample(self, sample: LongMemSample, sample_idx: int, embedding_model, save_dir: str = "./results_longmem"):
+    def run_single_sample(self, sample: LongMemSample, sample_idx: int, embedding_model, save_dir: str):
         """针对单个 LongMemEval 样本建库并进行 QA 测试"""
         table_name = f"longmem_{sample.question_id}"
         system = SimpleMemSystem(embedding_model=embedding_model, clear_db=False, table_name=table_name)
 
         dialogues = self.convert_to_dialogues(sample)
-        build_flag = f"./lancedb_data/{table_name}.flag"
+        build_flag = f"{config.LANCEDB_PATH}/{table_name}.flag"
         prompt_tokens = 0
         completion_tokens = 0
 
@@ -99,7 +100,7 @@ class LongMemEvalTester:
             system.vector_store.clear()
             system.add_dialogues(dialogues)
             system.finalize()
-            os.makedirs("./lancedb_data", exist_ok=True)
+            os.makedirs(config.LANCEDB_PATH, exist_ok=True)
             with open(build_flag, "w", encoding="utf-8") as f:
                 f.write("build_complete")
 
@@ -168,7 +169,15 @@ if __name__ == "__main__":
 
     samples = load_longmemeval_dataset(args.dataset)
 
-    TOKEN_CONSUMPTION = "token_consumption_build_memory_longmemeval/"
+    TOKEN_CONSUMPTION = "token_consumption_build_memory_longmemeval"
+    if config.LLM_MODEL.lower() != "qwen3-8b":
+        TOKEN_CONSUMPTION = TOKEN_CONSUMPTION+f"_{config.LLM_MODEL.lower()}"
+    RESULT_DIR = "./results_longmem"
+    if os.environ.get("FUSIONRAG", "").lower() == "true":
+        RESULT_DIR = "./results_longmem_fusionrag"
+    if config.LLM_MODEL.lower() != "qwen3-8b":
+        RESULT_DIR = RESULT_DIR+f"_{config.LLM_MODEL.lower()}"
+
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
     MAX_PARALLEL = 10 ##mengyao_debug
     if os.environ.get('DEBUG') == "1":

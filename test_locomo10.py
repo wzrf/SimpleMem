@@ -21,6 +21,8 @@ from bert_score import score as bert_score
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.util import pytorch_cos_sim
 from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+
+import config
 from simplemem.core.utils.embedding import EmbeddingModel
 
 from main import SimpleMemSystem
@@ -41,6 +43,8 @@ except Exception as e:
     sentence_model = None
 
 all_memory_summarize_percentage = []
+all_answer_time = []
+all_retrieval_time = []
 
 # ============================================================================
 # Data Structures for LoComo10 Dataset
@@ -739,7 +743,7 @@ Return ONLY the JSON, no other text.
                     messages,
                     temperature=0.5,  # Higher temperature for category 5
                     response_format=response_format,
-                    max_retries=3  # Ensure robust category 5 evaluation with retries
+                    max_retries=2  # Ensure robust category 5 evaluation with retries
                 )
 
                 # Parse JSON response
@@ -800,7 +804,7 @@ Return ONLY the JSON, no other text.
         add_start = time.time()
 
         ##mengyao_debug fusionrag: 这个simple mem的add memory流程里面没有可以复用的cache，就跳过build了
-        build_flag = f"./lancedb_data/{table_name}.flag"
+        build_flag = f"{config.LANCEDB_PATH}/{table_name}.flag"
         if not os.path.exists(build_flag):
             self.system.vector_store.clear()
             self.system.add_dialogues(dialogues)
@@ -942,11 +946,15 @@ Return ONLY the JSON, no other text.
             adversarial_answer = qa.adversarial_answer if qa.adversarial_answer else "Unknown answer"
             answer, p_t, c_t = self.generate_category5_answer(question, contexts, adversarial_answer)
         else:
-            answer, p_t, c_t = self.system.answer_generator.generate_answer_with_token_consumptions(question, contexts)
+            answer, p_t, c_t = self.system.answer_generator.generate_answer_with_token_consumptions(question, contexts, model="kimi-k2.6")
         prompt_tokens += p_t
         completion_tokens += c_t
 
         answer_time = time.time() - answer_start
+        all_answer_time.append(answer_time)
+        all_retrieval_time.append(retrieval_time)
+        print(f"average answer time={sum(all_answer_time)/len(all_answer_time)}")
+        print(f"average retrieval time={sum(all_retrieval_time)/len(all_retrieval_time)}")
 
         total_time = retrieval_time + answer_time
 
@@ -1122,18 +1130,28 @@ if __name__ == "__main__":
 
     print(f"Total samples: {total_samples}")
 
+    MAX_PARALLEL = 16
+    TOTAL_QA_SAMPLE = 1000
+
     ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
     RESULT_DIR = "./results_locomo"
     if os.environ.get("FUSIONRAG", "").lower() == "true":
         RESULT_DIR = "./results_locomo_fusionrag"
-    TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo/"
-    os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
-    os.makedirs(RESULT_DIR, exist_ok=True)
-    MAX_PARALLEL = 16
-    if os.environ.get('DEBUG') == "1":
+    if config.LLM_MODEL.lower() != "qwen3-8b":
+        RESULT_DIR = RESULT_DIR+f"_{config.LLM_MODEL.lower()}"
+
+    if os.environ.get("DEBUG", "").lower() == "true":
         MAX_PARALLEL = 1
         args.parallel_questions = False
-    TOTAL_QA_SAMPLE = 1000
+        samples = samples[:10]
+        TOTAL_QA_SAMPLE = 0
+
+    TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo"
+    if config.LLM_MODEL.lower() != "qwen3-8b":
+        TOKEN_CONSUMPTION = TOKEN_CONSUMPTION+f"_{config.LLM_MODEL.lower()}"
+
+    os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
+    os.makedirs(RESULT_DIR, exist_ok=True)
 
     def run_sample(sample_idx, sample, embedding_model, save_dir):
         tester = LoCoMoTester(

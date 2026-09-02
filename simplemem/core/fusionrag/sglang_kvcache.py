@@ -136,7 +136,9 @@ def run_gen(prompt: str, prefix_prompt:str, max_tokens:int, rope:bool, use_fusio
             load_preprocess_cache:bool, load_raw_cache:bool, recompute_tokens: list[str], MODEL: str,
             prompt_list: list[str], prefix_prompt_list: list[str], endpoint_url: str,
             preprocess_cache_key_list: list[str]=None,
-            cache_is_preprocess_list: list[bool]=None) :
+            cache_is_preprocess_list: list[bool]=None,
+            recompute_tokens_list: list[list[str]]=None,
+            recompute_indices:list[int]=None,) :
     url = endpoint_url
     headers = {
         "Content-Type": "application/json"
@@ -166,6 +168,11 @@ def run_gen(prompt: str, prefix_prompt:str, max_tokens:int, rope:bool, use_fusio
         }
         if len(recompute_tokens) == 0:
             del data["fusionrag_params"]["recompute_tokens"]
+        if recompute_indices is not None:
+            recompute_indices = [int(x) for x in recompute_indices]
+            data["fusionrag_params"]["recompute_idx"] = recompute_indices
+        if recompute_tokens_list is not None:
+            data["fusionrag_params"]["recompute_tokens_list"] = recompute_tokens_list
         if preprocess_cache_key_list is not None:
             data["fusionrag_params"]["preprocess_cache_key_list"] = preprocess_cache_key_list
         if cache_is_preprocess_list is not None:
@@ -328,16 +335,18 @@ def run_one_question_sglang(
         max_tokens:int,
         retrived_docs_relevant_docs: list[list[str]],
         recompute_tokens: list[str],
-        recompute_tokens_list: list[list[str]],
+        recompute_tokens_list: list[list[str]]=None,
         max_workers=1,
         recomputation_rate=0.0,
         model_use="",
         endpoint_url="",
         prefiller_endpoint_url="",
-        method_keyword=""
+        method_keyword="",
+        recompute_indices=None,
     ):
     question_up_front = False
     user_prompt = USER_PROMPT
+    time_start = time.time()
     run_raw_cache(
         prompt=DEFAULT_SYSTEM_PROMPT,
         prefix_prompt="", MODEL=MODEL,
@@ -358,7 +367,7 @@ def run_one_question_sglang(
             endpoint_url=prefiller_endpoint_url
         )
 
-    print(f"cache 生成 请求成功！")
+    print(f"cache 生成 请求成功！time={time.time() - time_start}")
 
     if question_up_front:
         user_prompt = user_prompt
@@ -413,7 +422,9 @@ def run_one_question_sglang(
         load_preprocess_cache=False,
         recompute_tokens=recompute_tokens,
         MODEL=MODEL,
-        endpoint_url=endpoint_url
+        endpoint_url=endpoint_url,
+        recompute_tokens_list=recompute_tokens_list,
+        recompute_indices=recompute_indices
     )
 
 def run_one_question_origin_sglang(

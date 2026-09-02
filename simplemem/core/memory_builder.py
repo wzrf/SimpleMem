@@ -7,6 +7,7 @@ Implements:
 - Sliding window processing for dialogue segmentation
 - Generates compact memory units with resolved coreferences and absolute timestamps
 """
+import os
 from typing import List, Optional
 from simplemem.core.models.memory_entry import MemoryEntry, Dialogue
 from simplemem.core.utils.llm_client import LLMClient
@@ -45,6 +46,8 @@ class MemoryBuilder:
         self.step_size = max(1, self.window_size - self.overlap_size)
 
         # Use config values as default if not explicitly provided
+        if os.getenv("DEBUG", "").lower() == "true":
+            enable_parallel_processing = False
         self.enable_parallel_processing = enable_parallel_processing if enable_parallel_processing is not None else getattr(config, 'ENABLE_PARALLEL_PROCESSING', True)
         self.max_parallel_workers = max_parallel_workers if max_parallel_workers is not None else getattr(config, 'MAX_PARALLEL_WORKERS', 4)
 

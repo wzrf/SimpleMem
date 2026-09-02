@@ -230,7 +230,7 @@ Return ONLY JSON, no other content.
 
                 response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
-                    temperature=0.1,
+                    temperature=0.0,
                     response_format=response_format
                 )
                 analysis = self.llm_client.extract_json(response)
@@ -722,7 +722,7 @@ Return ONLY the JSON, no other text.
                 
             response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                 messages,
-                temperature=0.2,
+                temperature=0.0,
                 response_format=response_format
             )
             
@@ -793,7 +793,7 @@ Return ONLY the JSON, no other text.
                 
             response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
                 messages,
-                temperature=0.3,
+                temperature=0.0,
                 response_format=response_format
             )
             
@@ -944,7 +944,8 @@ Return ONLY the JSON, no other text."""
             if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                 response_format = {"type": "json_object"}
 
-            if os.getenv("FUSIONRAG", "").lower() == "true":
+            # if os.getenv("FUSIONRAG", "").lower() == "true":
+            if False and os.getenv("FUSIONRAG", "").lower() == "true": ##mengyao_debug make test faster
                 response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
                     system_prompt=system_prompt,
                     prefix=prefix,
@@ -954,7 +955,7 @@ Return ONLY the JSON, no other text."""
             else:
                 response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
-                    temperature=0.1,
+                    temperature=0.0,
                     response_format=response_format
                 )
             
@@ -1048,7 +1049,7 @@ Return ONLY the JSON, no other text.
             if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                 response_format = {"type": "json_object"}
 
-            if os.getenv("FUSIONRAG", "").lower() == "true":
+            if False and os.getenv("FUSIONRAG", "").lower() == "true": ##mengyao_debug for testing
                 response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
                     system_prompt=system_prompt,
                     prefix=prefix,
@@ -1058,7 +1059,7 @@ Return ONLY the JSON, no other text.
             else:
                 response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
-                    temperature=0.3,
+                    temperature=0.0,
                     response_format=response_format
                 )
             

@@ -20,7 +20,7 @@ class AnswerGenerator:
         self.llm_client = llm_client
 
     ## mengyao_debug fusionrag
-    def generate_answer_with_token_consumptions(self, query: str, contexts: List[MemoryEntry]) -> (str, int, int):
+    def generate_answer_with_token_consumptions(self, query: str, contexts: List[MemoryEntry], model="qwen3-8b") -> (str, int, int):
         """
         Generate answer
 
@@ -68,13 +68,15 @@ class AnswerGenerator:
                         system_prompt="You are a professional Q&A assistant. Extract concise answers from context. You must output valid JSON format.",
                         prefix=prefix,
                         fusionrag_cache_list=context_str_list,
-                        query_prompt=query_prompt
+                        query_prompt=query_prompt,
+                        model=model
                     )
                 else:
                     response, p_t, c_t = self.llm_client.chat_completion_with_token_comsumption(
                         messages,
                         temperature=0.1,
-                        response_format=response_format
+                        response_format=response_format,
+                        use_answer_client=True ## use the answer client.
                     )
 
                 # Parse JSON response

@@ -44,6 +44,7 @@ class EmbeddingModel:
             print(f"Loading Qwen3 model via SentenceTransformers: {model_path}")
             
             # Initialize with optimization settings
+            device_ = "cpu" ##mengyao_debug
             if self.use_optimization:
                 try:
                     # Try to use flash_attention_2 and left padding for better performance
@@ -51,7 +52,7 @@ class EmbeddingModel:
                         model_path,
                         model_kwargs={
                             "attn_implementation": "flash_attention_2", 
-                            "device_map": "cuda"
+                            "device_map": device_
                         },
                         tokenizer_kwargs={"padding_side": "left"},
                         trust_remote_code=True
@@ -59,7 +60,7 @@ class EmbeddingModel:
                     print("Qwen3 loaded with flash_attention_2 optimization")
                 except Exception as e:
                     print(f"Flash attention failed ({e}), using standard loading...")
-                    self.model = SentenceTransformer(model_path, trust_remote_code=True, device='cuda')
+                    self.model = SentenceTransformer(model_path, trust_remote_code=True, device=device_)
             else:
                 self.model = SentenceTransformer(model_path, trust_remote_code=True)
             
