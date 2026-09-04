@@ -7,6 +7,7 @@ import numpy as np
 from simplemem.core.settings import settings as config
 import os
 import threading
+import config
 
 
 
@@ -44,7 +45,10 @@ class EmbeddingModel:
             print(f"Loading Qwen3 model via SentenceTransformers: {model_path}")
             
             # Initialize with optimization settings
-            device_ = "cpu" ##mengyao_debug
+            if any(sub in config.LLM_MODEL.lower() for sub in ["kimi", "deepseek"]):
+                device_ = "cpu" ##mengyao_debug
+            else:
+                device_ = "cuda"
             if self.use_optimization:
                 try:
                     # Try to use flash_attention_2 and left padding for better performance

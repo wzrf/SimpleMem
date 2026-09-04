@@ -1,0 +1,96 @@
+"""LoComo10 Dataset Test for SimpleMem System
+Tests retrieval time, token usage, and answer quality
+"""
+from pathlib import Path
+import time, os
+import json
+from typing import List, Dict, Optional, Union
+from dataclasses import dataclass
+
+from openai.types import embedding_model
+# import tiktoken  # Removed - token counting disabled
+from tqdm import tqdm
+import statistics
+from collections import defaultdict
+import nltk
+from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
+from nltk.translate.meteor_score import meteor_score
+from rouge_score import rouge_scorer
+from bert_score import score as bert_score
+from sentence_transformers import SentenceTransformer
+from sentence_transformers.util import pytorch_cos_sim
+from concurrent.futures import ThreadPoolExecutor, as_completed, ProcessPoolExecutor
+
+import config
+from simplemem.core.utils.embedding import EmbeddingModel
+
+from main import SimpleMemSystem
+from simplemem.core.models.memory_entry import Dialogue
+
+# Download required NLTK data
+# try:
+#     nltk.download('punkt', quiet=True)
+#     nltk.download('wordnet', quiet=True)
+# except Exception as e:
+#     print(f"Error downloading NLTK data: {e}")
+
+# Initialize SentenceTransformer model for semantic similarity
+try:
+    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2')
+except Exception as e:
+    print(f"Warning: Could not load SentenceTransformer model: {e}")
+    sentence_model = None
+
+all_memory_summarize_percentage = []
+all_answer_time = []
+all_retrieval_time = []
+
+# ============================================================================
+# Data Structures for LoComo10 Dataset
+# ============================================================================
+
+@dataclass
+class QA:
+    question: str
+    answer: Optional[str]
+    evidence: List[str]
+    category: Optional[int] = None
+    adversarial_answer: Optional[str] = None
+
+    @property
+    def final_answer(self) -> Optional[str]:
+        """Get the appropriate answer based on category."""
+        if self.category == 5:
+            return self.adversarial_answer
+        return self.answer
+
+
+@dataclass
+class Turn:
+    speaker: str
+    dia_id: str
+    text: str
+
+
+@dataclass
+class Session:
+    session_id: int
+    date_time: str
+    turns: List[Turn]
+
+
+@dataclass
+class Conversation:
+    speaker_a: str
+    speaker_b: str
+    sessions: Dict[int, Session]
+
+
+@dataclass
+class EventSummary:
+    events: Dict[str, Dict[str, List[str]]]  # session -> speaker -> events
+
+
+@dataclass
+class Observation:
+    observations: Dict[str, Dict[str, List[List[str]]]]  # session -> speaker -> [observation, evidence]

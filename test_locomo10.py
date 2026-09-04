@@ -3,8 +3,7 @@ LoComo10 Dataset Test for SimpleMem System
 Tests retrieval time, token usage, and answer quality
 """
 from pathlib import Path
-import time, os
-import json
+import time, os, json, threading
 from typing import List, Dict, Optional, Union
 from dataclasses import dataclass
 
@@ -673,6 +672,66 @@ class LoCoMoTester:
         self.metrics_list = []
         self.categories = []
 
+        # For thread-safe incremental saving
+        self.save_lock = threading.RLock()
+
+    def _get_existing_results(self, result_file_path: str) -> Dict:
+        """Load existing results from file if it exists, return processed questions set"""
+        processed_questions = set()
+        existing_results = []
+
+        if os.path.exists(result_file_path):
+            try:
+                with open(result_file_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+
+                if 'detailed_results' in data:
+                    for result in data['detailed_results']:
+                        if 'question' in result:
+                            processed_questions.add(result['question'])
+                            existing_results.append(result)
+                print(f"Found {len(processed_questions)} already processed questions in {result_file_path}")
+                return processed_questions, existing_results, data
+            except Exception as e:
+                print(f"Warning: Failed to load existing results file {result_file_path}: {e}")
+
+        return set(), [], None
+
+    def _save_incremental_result(self, result_file: str, new_result: Dict, all_results: List, existing_data: Dict = None):
+        """Save incremental result to file"""
+        try:
+            # Update summary statistics
+            retrieval_times = [r.get('retrieval_time', 0) for r in all_results]
+            answer_times = [r.get('answer_time', 0) for r in all_results]
+            total_times = [r.get('total_time', 0) for r in all_results]
+
+            summary = {
+                'num_questions': len(all_results),
+                'avg_retrieval_time': sum(retrieval_times) / len(retrieval_times) if retrieval_times else 0,
+                'avg_answer_time': sum(answer_times) / len(answer_times) if answer_times else 0,
+                'avg_total_time': sum(total_times) / len(total_times) if total_times else 0,
+            }
+
+            # Collect metrics for aggregation if needed
+            metrics_list = [r.get('metrics', {}) for r in all_results if r.get('metrics')]
+            categories = [r.get('category', 0) for r in all_results]
+
+            aggregated = {}
+            if metrics_list:
+                aggregated = aggregate_metrics(metrics_list, categories)
+
+            # Save updated results
+            with open(result_file, 'w', encoding='utf-8') as f:
+                json.dump({
+                    'summary': summary,
+                    'aggregated_metrics': aggregated,
+                    'detailed_results': all_results
+                }, f, indent=2)
+
+            print(f"Results incrementally saved to {result_file} (total questions: {len(all_results)})")
+        except Exception as e:
+            print(f"Warning: Failed to save incremental result to {result_file}: {e}")
+
     def generate_category5_answer(self, question: str, contexts: List, adversarial_answer: str) -> (str, int, int):
         """
         Special answer generation for category 5 (adversarial questions).
@@ -789,7 +848,7 @@ Return ONLY the JSON, no other text.
 
         return dialogues
 
-    def test_sample(self, sample: LoCoMoSample, sample_idx: int, table_name: str, enable_parallel_questions: bool = False):
+    def test_sample(self, sample: LoCoMoSample, sample_idx: int, table_name: str, result_file: str = None, enable_parallel_questions: bool = False):
         """Test a single sample from the dataset"""
         print(f"\n{'=' * 80}")
         print(f"Testing Sample {sample_idx}")
@@ -800,6 +859,34 @@ Return ONLY the JSON, no other text.
         print(f"Adding {len(dialogues)} dialogues to memory...")
 
         sample.qa = sample.qa[:TOTAL_QA_SAMPLE]
+
+        # Initialize or load existing results
+        existing_questions = set()
+        all_existing_results = []
+        existing_data = None
+
+        if result_file and os.path.exists(result_file):
+            processed_questions, existing_results, data = self._get_existing_results(result_file)
+            existing_questions = processed_questions
+            all_existing_results = existing_results
+            existing_data = data
+            print(f"Found {len(existing_questions)} already processed questions in {result_file}")
+
+        # Filter QA list to only unprocessed questions
+        original_qa_count = len(sample.qa)
+        unprocessed_qa = []
+        for qa in sample.qa:
+            if qa.question not in existing_questions:
+                unprocessed_qa.append(qa)
+
+        print(f"Total questions in sample: {original_qa_count}, unprocessed: {len(unprocessed_qa)}")
+
+        if len(unprocessed_qa) == 0:
+            print("All questions already processed. Returning existing results.")
+            return all_existing_results
+
+        # Replace sample.qa with unprocessed questions for processing
+        sample.qa = unprocessed_qa
 
         add_start = time.time()
 
@@ -837,28 +924,37 @@ Return ONLY the JSON, no other text.
 
         # Test each question (parallel or sequential)
         if enable_parallel_questions and len(sample.qa) > 1:
-            sample_results = self._test_questions_parallel(sample.qa)
+            sample_results = self._test_questions_parallel(sample.qa, result_file, all_existing_results, existing_data)
         else:
-            sample_results = self._test_questions_sequential(sample.qa)
+            sample_results = self._test_questions_sequential(sample.qa, result_file, all_existing_results, existing_data)
 
-        return sample_results
+        # Combine existing and new results
+        all_results = all_existing_results + sample_results
+        return all_results
 
-    def _test_questions_sequential(self, qa_list: List):
+    def _test_questions_sequential(self, qa_list: List, result_file: str = None, all_existing_results: List = None, existing_data: Dict = None):
         """Test questions sequentially (original method)"""
         sample_results = []
+        start_idx = len(all_existing_results) if all_existing_results else 0
 
         for qa_idx, qa in enumerate(qa_list):
-            result = self._process_single_question(qa, qa_idx)
+            result = self._process_single_question(qa, qa_idx + start_idx)
             sample_results.append(result)
+
+            # Save incremental result after each question
+            if result_file:
+                self._save_incremental_result(result_file, result, all_existing_results + sample_results if all_existing_results else sample_results, existing_data)
 
         return sample_results
 
-    def _test_questions_parallel(self, qa_list: List):
+    def _test_questions_parallel(self, qa_list: List, result_file: str = None, all_existing_results: List = None, existing_data: Dict = None):
         """Test questions in parallel using ThreadPoolExecutor"""
         import concurrent.futures
+        import threading
 
         print(f"\n[Parallel Testing] Processing {len(qa_list)} questions in parallel")
         sample_results = []
+        start_idx = len(all_existing_results) if all_existing_results else 0
 
         # Use ThreadPoolExecutor for parallel question processing
         # Use explicit test_workers parameter, or config, or reasonable default
@@ -879,11 +975,16 @@ Return ONLY the JSON, no other text.
 
         print(f"[Parallel Testing] Using {max_workers} parallel workers for {len(qa_list)} questions")
 
+        # Shared state for incremental saving
+        collected_results = []
+        if all_existing_results:
+            collected_results.extend(all_existing_results)
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             # Submit all question processing tasks
             future_to_qa = {}
             for qa_idx, qa in enumerate(qa_list):
-                future = executor.submit(self._process_single_question, qa, qa_idx)
+                future = executor.submit(self._process_single_question, qa, qa_idx + start_idx)
                 future_to_qa[future] = (qa, qa_idx)
 
             # Collect results as they complete, maintain order
@@ -893,11 +994,17 @@ Return ONLY the JSON, no other text.
                 try:
                     result = future.result()
                     results_dict[qa_idx] = result
-                    print(f"[Parallel Testing] Question {qa_idx + 1} completed")
+                    print(f"[Parallel Testing] Question {qa_idx + 1 + start_idx} completed")
+
+                    # Save incremental result after each question
+                    if result_file:
+                        with self.save_lock:
+                            collected_results.append(result)
+                            self._save_incremental_result(result_file, result, collected_results, existing_data)
                 except Exception as e:
-                    print(f"[Parallel Testing] Question {qa_idx + 1} failed: {e}")
+                    print(f"[Parallel Testing] Question {qa_idx + 1 + start_idx} failed: {e}")
                     # Create a default result for failed questions
-                    results_dict[qa_idx] = {
+                    error_result = {
                         'question': qa.question,
                         'answer': "Error during processing",
                         'reference': qa.final_answer,
@@ -908,6 +1015,13 @@ Return ONLY the JSON, no other text.
                         'num_retrieved': 0,
                         'metrics': {}
                     }
+                    results_dict[qa_idx] = error_result
+
+                    # Save incremental error result
+                    if result_file:
+                        with self.save_lock:
+                            collected_results.append(error_result)
+                            self._save_incremental_result(result_file, error_result, collected_results, existing_data)
 
             # Sort results by qa_idx to maintain original order
             for qa_idx in sorted(results_dict.keys()):
@@ -1022,7 +1136,7 @@ Return ONLY the JSON, no other text.
         table_name = f"locomo_{sample.sample_id}"
         self.system = SimpleMemSystem(embedding_model=embedding_model, clear_db=False, table_name=table_name)  ##mengyao_debug
 
-        sample_results = self.test_sample(sample, sample_idx, enable_parallel_questions=enable_parallel_questions, table_name=table_name)
+        sample_results = self.test_sample(sample, sample_idx, table_name=table_name, result_file=result_file, enable_parallel_questions=enable_parallel_questions)
 
         if sample_results is None:
             return
@@ -1099,6 +1213,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test SimpleMem on LoComo10 dataset')
     parser.add_argument('--dataset', type=str, default='test_ref/locomo10.json',
                         help='Path to LoComo10 dataset')
+    parser.add_argument('--total_qa', type=int, default=1000,
+                        help='total qa for each sample')
     parser.add_argument('--num-samples', type=int, default=None,
                         help='Number of samples to test (default: all)')
     parser.add_argument('--no-save', action='store_true',
@@ -1131,7 +1247,8 @@ if __name__ == "__main__":
     print(f"Total samples: {total_samples}")
 
     MAX_PARALLEL = 16
-    TOTAL_QA_SAMPLE = 1000
+    TOTAL_QA_SAMPLE = args.total_qa ##mengyao_debug
+    print(f"TOTAL_QA_SAMPLE={TOTAL_QA_SAMPLE}")
 
     ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
     RESULT_DIR = "./results_locomo"
@@ -1143,8 +1260,7 @@ if __name__ == "__main__":
     if os.environ.get("DEBUG", "").lower() == "true":
         MAX_PARALLEL = 1
         args.parallel_questions = False
-        samples = samples[:10]
-        TOTAL_QA_SAMPLE = 0
+        TOTAL_QA_SAMPLE = 10
 
     TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo"
     if config.LLM_MODEL.lower() != "qwen3-8b":

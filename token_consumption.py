@@ -321,14 +321,14 @@ def process_halumem_dataset(result_dir: str, dataset_name: str):
 
 if __name__ == "__main__":
     tasks = [
+        # (
+        #     "./token_consumption_build_memory_locomo",
+        #     "./results_locomo",
+        #     "locomo",
+        # ),
         (
-            "./token_consumption_build_memory_locomo",
-            "./results_locomo",
-            "locomo",
-        ),
-        (
-            "./token_consumption_build_memory_locomo",
-            "./results_locomo_fusionrag",
+            "./token_consumption_build_memory_locomo_kimi-k2.6",
+            "./results_locomo_kimi-k2.6",
             "locomo",
         ),
         # (
