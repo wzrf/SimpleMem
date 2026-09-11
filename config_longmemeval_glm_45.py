@@ -40,7 +40,7 @@ WINDOW_SIZE = 10 ##mengyao_debug longmemeval
 OVERLAP_SIZE = 1
 
 ENABLE_PARALLEL_PROCESSING = False
-MAX_PARALLEL_WORKERS = 64 # mengyao_debug Number of parallel workers for memory building
+MAX_PARALLEL_WORKERS = 30 # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"

@@ -45,10 +45,11 @@ class EmbeddingModel:
             print(f"Loading Qwen3 model via SentenceTransformers: {model_path}")
             
             # Initialize with optimization settings
-            if any(sub in config.LLM_MODEL.lower() for sub in ["kimi", "deepseek"]):
-                device_ = "cpu" ##mengyao_debug
-            else:
-                device_ = "cuda"
+            # if any(sub in config.LLM_MODEL.lower() for sub in ["kimi", "deepseek"]):
+            #     device_ = "cpu" ##mengyao_debug
+            # else:
+            #     device_ = "cuda"
+            device_ = "cpu"
             if self.use_optimization:
                 try:
                     # Try to use flash_attention_2 and left padding for better performance
@@ -58,6 +59,7 @@ class EmbeddingModel:
                             "attn_implementation": "flash_attention_2", 
                             "device_map": device_
                         },
+                        device=device_,
                         tokenizer_kwargs={"padding_side": "left"},
                         trust_remote_code=True
                     )

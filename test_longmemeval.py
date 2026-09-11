@@ -179,18 +179,22 @@ if __name__ == "__main__":
         RESULT_DIR = RESULT_DIR+f"_{config.LLM_MODEL.lower()}"
 
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
-    MAX_PARALLEL = 10 ##mengyao_debug
+    os.makedirs(RESULT_DIR, exist_ok=True)
+    print(f"TOKEN_CONSUMPTION: {TOKEN_CONSUMPTION}")
+    print(f"RESULT_DIR: {RESULT_DIR}")
+
+    MAX_PARALLEL = config.MAX_PARALLEL_WORKERS ##mengyao_debug
     if os.environ.get('DEBUG') == "1":
         MAX_PARALLEL = 1
     
     # 实例化共享的 Embedding Models 实例池
-    embedding_models = [EmbeddingModel() for _ in range(MAX_PARALLEL)]
+    embedding_model = EmbeddingModel()
 
     def _worker(idx_sample):
         idx, sample = idx_sample
         tester = LongMemEvalTester(use_llm_judge=args.llm_judge)
-        emb_model = embedding_models[idx % MAX_PARALLEL]
-        return tester.run_single_sample(sample, idx, emb_model)
+        emb_model = embedding_model
+        return tester.run_single_sample(sample, idx, emb_model, RESULT_DIR)
 
     all_results = []
     with ThreadPoolExecutor(max_workers=MAX_PARALLEL) as executor:

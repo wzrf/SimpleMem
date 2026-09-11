@@ -56,6 +56,7 @@ class LLMClient:
         self.client = OpenAI(
             base_url=self.base_url,
             api_key=self.api_key,
+            timeout=18000
         )
 
     def generate_response_with_fusionrag(

@@ -25,22 +25,22 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:30003/v1/" ##mengyao_debug change this
+OPENAI_BASE_URL = "http://127.0.0.1:30004/v1/" ##mengyao_debug change this
 
 # LLM Model name
-LLM_MODEL = "GLM-4.5-Air" ##mengyao_debug change this
+LLM_MODEL = "Kimi-K2.6" ##mengyao_debug change this
 
 # Path to LanceDB storage
-LANCEDB_PATH = "./lancedb_data_GLM-4.5-Air" ##mengyao_debug change this
+LANCEDB_PATH = "./lancedb_data_Kimi-K2.6" ##mengyao_debug change this
 
 # Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 10 ##mengyao_debug longmemeval
+WINDOW_SIZE = 5 ##mengyao_debug longmemeval
 
 # Window overlap size (for context continuity)
-OVERLAP_SIZE = 1
+OVERLAP_SIZE = 0
 
 ENABLE_PARALLEL_PROCESSING = False
-MAX_PARALLEL_WORKERS = 64 # mengyao_debug Number of parallel workers for memory building
+MAX_PARALLEL_WORKERS = 32  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"

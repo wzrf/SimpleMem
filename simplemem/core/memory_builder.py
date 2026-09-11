@@ -17,6 +17,7 @@ import json
 import asyncio
 import concurrent.futures
 from functools import partial
+import time
 
 
 class MemoryBuilder:
@@ -154,8 +155,8 @@ class MemoryBuilder:
         window = self.dialogue_buffer[:self.window_size]
         self.dialogue_buffer = self.dialogue_buffer[self.step_size:]
 
-        print(f"\nProcessing window: {len(window)} dialogues (processed {self.processed_count} so far)")
-
+        print(f"\nProcessing window: {len(window)} dialogues (processed {self.processed_count}/{len(self.dialogue_buffer)} so far)")
+        time_start = time.time()
         # Call LLM to generate memory entries
         entries = self._generate_memory_entries(window)
 
@@ -165,7 +166,7 @@ class MemoryBuilder:
             self.previous_entries = entries  # Save as context
             self.processed_count += len(window)
 
-        print(f"Generated {len(entries)} memory entries")
+        print(f"Generated {len(entries)} memory entries, took {time.time() - time_start} seconds")
 
     def process_remaining(self):
         """

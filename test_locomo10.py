@@ -36,7 +36,7 @@ from simplemem.core.models.memory_entry import Dialogue
 
 # Initialize SentenceTransformer model for semantic similarity
 try:
-    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2')
+    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2', device="cpu")
 except Exception as e:
     print(f"Warning: Could not load SentenceTransformer model: {e}")
     sentence_model = None
@@ -1268,6 +1268,12 @@ if __name__ == "__main__":
 
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
     os.makedirs(RESULT_DIR, exist_ok=True)
+
+    print(f"TOKEN_CONSUMPTION={TOKEN_CONSUMPTION}")
+    print(f"RESULT_DIR={RESULT_DIR}")
+    print(f"DB={config.LANCEDB_PATH}")
+
+    time.sleep(3)
 
     def run_sample(sample_idx, sample, embedding_model, save_dir):
         tester = LoCoMoTester(

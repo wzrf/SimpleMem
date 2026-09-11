@@ -34,13 +34,10 @@ LLM_MODEL = "GLM-4.5-Air" ##mengyao_debug change this
 LANCEDB_PATH = "./lancedb_data_GLM-4.5-Air" ##mengyao_debug change this
 
 # Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 10 ##mengyao_debug longmemeval
-
-# Window overlap size (for context continuity)
-OVERLAP_SIZE = 1
+WINDOW_SIZE = 40 ##mengyao_debug longmemeval
 
 ENABLE_PARALLEL_PROCESSING = False
-MAX_PARALLEL_WORKERS = 64 # mengyao_debug Number of parallel workers for memory building
+MAX_PARALLEL_WORKERS = 10  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"
@@ -71,6 +68,8 @@ USE_JSON_FORMAT = False
 # Memory Building Parameters
 # ============================================================================
 
+# Window overlap size (for context continuity)
+OVERLAP_SIZE = 2
 
 
 # ============================================================================
