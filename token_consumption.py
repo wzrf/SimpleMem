@@ -223,6 +223,8 @@ def process_eval_dataset(
 
     judgment_tasks = []  # 存储待并发评估的任务
 
+    filtered_count = 0  # 统计被过滤的样本数（仅 locomo 数据集）
+
     question_prompt_tokens = []
     question_completion_tokens = []
 
@@ -235,6 +237,20 @@ def process_eval_dataset(
                 # 情况 A：Locomo 等包含 detailed_results 列表的汇总文件
                 if "detailed_results" in data:
                     for item in data["detailed_results"]:
+                        # 对 locomo 数据集，只处理 category=1-4
+                        if "locomo" in dataset_name.lower():
+                            category = item.get("category")
+                            if category is None:
+                                continue
+                            # 转换为整数处理，可能是字符串或数字
+                            try:
+                                cat_int = int(category)
+                            except (ValueError, TypeError):
+                                continue
+                            if cat_int not in [1, 2, 3, 4]:
+                                filtered_count += 1
+                                continue
+
                         cat_key = item.get("category") or item.get(
                             "question_type", "uncategorized"
                         )
@@ -266,6 +282,18 @@ def process_eval_dataset(
 
                 # 情况 B：单个 JSON 对应单个样本 (如 question_type + metrics)
                 elif "metrics" in data:
+                    # 对 locomo 数据集，检查 category 过滤
+                    if "locomo" in dataset_name.lower():
+                        category = data.get("category")
+                        if category is not None:
+                            try:
+                                cat_int = int(category)
+                                if cat_int not in [1, 2, 3, 4]:
+                                    filtered_count += 1
+                                    continue
+                            except (ValueError, TypeError):
+                                pass
+
                     cat_key = data.get("question_type", "uncategorized")
                     metrics = data.get("metrics", {})
 
@@ -351,6 +379,10 @@ def process_eval_dataset(
         f"[question] Average Prompt Tokens    : {avg_prompt_question:.2f}\n"
         f"[question] Average Completion Tokens: {avg_comletion_question:.2f}"
     )
+
+    # 显示过滤统计信息（仅 locomo 数据集）
+    if filtered_count > 0:
+        print(f"[Filter] Samples excluded (category != 1-4): {filtered_count}")
 
     if metrics_by_category:
         print("\n" + "-" *108)

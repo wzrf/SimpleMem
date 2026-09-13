@@ -34,13 +34,13 @@ LLM_MODEL = "Kimi-K2.6" ##mengyao_debug change this
 LANCEDB_PATH = "./lancedb_data_Kimi-K2.6" ##mengyao_debug change this
 
 # Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 1 ##mengyao_debug longmemeval
+WINDOW_SIZE = 5 ##mengyao_debug longmemeval
 
 # Window overlap size (for context continuity)
 OVERLAP_SIZE = 0
 
 ENABLE_PARALLEL_PROCESSING = False
-MAX_PARALLEL_WORKERS = 16  # mengyao_debug Number of parallel workers for memory building
+MAX_PARALLEL_WORKERS = 32  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"
