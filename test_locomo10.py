@@ -1052,6 +1052,33 @@ Return ONLY the JSON, no other text.
             contexts, prompt_tokens, completion_tokens = self.system.hybrid_retriever.retrieve(question)
         retrieval_time = time.time() - retrieval_start
 
+        if os.environ.get("DUMP_QUESTIONS", "").lower() == "true":
+            context_str, context_str_list = self.system.answer_generator._format_contexts_list(contexts)
+            prefix, query_prompt = self.system.answer_generator._build_answer_prompt_fusionrag(question, context_str)
+            context_str_list[0] = prefix + context_str_list[0]
+            result =  {
+                'question': question,
+                'answer': "dummy",
+                'reference': reference_answer,
+                'category': category,
+                'retrieval_time': retrieval_time,
+                'answer_time': 1,
+                'prompt_tokens': prompt_tokens,
+                'completion_tokens': completion_tokens,
+                'total_time': 1,
+                'num_retrieved': len(contexts),
+                'metrics': {},
+                'question_origin': {
+                    "system_prompt": "You are a professional Q&A assistant. Extract concise answers from context. You must output valid JSON format.",
+                    "prefix": "",
+                    "query_prompt": query_prompt,
+                    "question": question,
+                    "reference": reference_answer,
+                    "fusionrag_list": context_str_list
+                }
+            }
+            return result
+
         # Measure answer generation time
         answer_start = time.time()
 
@@ -1246,25 +1273,34 @@ if __name__ == "__main__":
 
     print(f"Total samples: {total_samples}")
 
+    for sample in samples:
+        sample.qa = [qa for qa in sample.qa if qa.category != 5]
+
     MAX_PARALLEL = 16
     TOTAL_QA_SAMPLE = args.total_qa ##mengyao_debug
     print(f"TOTAL_QA_SAMPLE={TOTAL_QA_SAMPLE}")
 
     ##mengyao_debug 并发处理sample、并发处理单个sample里面的 dialogs、并发处理问题
+    TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo"
     RESULT_DIR = "./results_locomo"
     if os.environ.get("FUSIONRAG", "").lower() == "true":
         RESULT_DIR = "./results_locomo_fusionrag"
     if config.LLM_MODEL.lower() != "qwen3-8b":
         RESULT_DIR = RESULT_DIR+f"_{config.LLM_MODEL.lower()}"
 
+    if os.environ.get("DUMP_QUESTIONS", "").lower() == "true":
+        RESULT_DIR = RESULT_DIR+"_dump"
+
     if os.environ.get("DEBUG", "").lower() == "true":
         MAX_PARALLEL = 1
-        args.parallel_questions = False
         TOTAL_QA_SAMPLE = 10
 
-    TOKEN_CONSUMPTION = "token_consumption_build_memory_locomo"
     if config.LLM_MODEL.lower() != "qwen3-8b":
         TOKEN_CONSUMPTION = TOKEN_CONSUMPTION+f"_{config.LLM_MODEL.lower()}"
+
+    if os.environ.get("FUSIONRAG", "").lower() == "true":
+        TOKEN_CONSUMPTION += "_fusionrag"
+
 
     os.makedirs(TOKEN_CONSUMPTION, exist_ok=True)
     os.makedirs(RESULT_DIR, exist_ok=True)

@@ -606,26 +606,26 @@ if __name__ == "__main__":
             "./results_locomo",
             "locomo",
         ),
-        (
-            "./token_consumption_build_memory_locomo_glm-4.5-air",
-            "./results_locomo_glm-4.5-air",
-            "locomo",
-        ),
-        (
-            "./token_consumption_build_memory_locomo_kimi-k2.6",
-            "./results_locomo_kimi-k2.6",
-            "locomo",
-        ),
-        (
-            "./token_consumption_build_memory_longmemeval",
-            "./results_longmem",
-            "longmemeval",
-        ),
-        (
-            "./token_consumption_build_memory_longmemeval_glm-4.5-air",
-            "./results_longmem_glm-4.5-air",
-            "longmemeval",
-        ),
+        # (
+        #     "./token_consumption_build_memory_locomo_glm-4.5-air",
+        #     "./results_locomo_glm-4.5-air",
+        #     "locomo",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_locomo_kimi-k2.6",
+        #     "./results_locomo_kimi-k2.6",
+        #     "locomo",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_longmemeval",
+        #     "./results_longmem",
+        #     "longmemeval",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_longmemeval_glm-4.5-air",
+        #     "./results_longmem_glm-4.5-air",
+        #     "longmemeval",
+        # ),
         (
             "./token_consumption_build_memory_longmemeval_kimi-k2.6",
             "./results_longmem_kimi-k2.6",

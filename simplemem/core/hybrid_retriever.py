@@ -946,7 +946,7 @@ Return ONLY the JSON, no other text."""
 
             # if os.getenv("FUSIONRAG", "").lower() == "true":
             if False and os.getenv("FUSIONRAG", "").lower() == "true": ##mengyao_debug make test faster
-                response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                response, p_t, c_t, _ = self.llm_client.generate_response_with_fusionrag(
                     system_prompt=system_prompt,
                     prefix=prefix,
                     fusionrag_cache_list=context_str_list,
@@ -1050,7 +1050,7 @@ Return ONLY the JSON, no other text.
                 response_format = {"type": "json_object"}
 
             if False and os.getenv("FUSIONRAG", "").lower() == "true": ##mengyao_debug for testing
-                response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                response, p_t, c_t, _ = self.llm_client.generate_response_with_fusionrag(
                     system_prompt=system_prompt,
                     prefix=prefix,
                     fusionrag_cache_list=context_str_list,

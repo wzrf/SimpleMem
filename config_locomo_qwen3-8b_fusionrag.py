@@ -25,12 +25,22 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:30004/v1/"
+OPENAI_BASE_URL = "http://127.0.0.1:20000/v1" ##mengyao_debug change this
 
 # LLM Model name
-# Examples: "gpt-4.1-mini", "gpt-4.1", "qwen3-max", "qwen-plus-2025-07-28",
-#           "deepseek-ai/deepseek-v4-pro" (Atlas Cloud)
-LLM_MODEL = "qwen3-8b"
+LLM_MODEL = "Qwen3-8B" ##mengyao_debug change this
+
+# Path to LanceDB storage
+LANCEDB_PATH = "./lancedb_data_Qwen3-8B_fusionrag" ##mengyao_debug change this
+
+# Number of dialogues per window (for locomo; for other dataset, please finetune it)
+WINDOW_SIZE = 40 ##mengyao_debug longmemeval
+
+# Window overlap size (for context continuity)
+OVERLAP_SIZE = 2
+
+ENABLE_PARALLEL_PROCESSING = True
+MAX_PARALLEL_WORKERS = 32  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"
@@ -61,11 +71,6 @@ USE_JSON_FORMAT = False
 # Memory Building Parameters
 # ============================================================================
 
-# Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 40
-
-# Window overlap size (for context continuity)
-OVERLAP_SIZE = 2
 
 
 # ============================================================================
@@ -86,8 +91,9 @@ STRUCTURED_TOP_K = 5
 # Database Configuration
 # ============================================================================
 
-# Path to LanceDB storage
-LANCEDB_PATH = "./lancedb_data"
+# Judge LLM Model (optional - if None, uses LLM_MODEL)
+JUDGE_MODEL = "deepseek-v3.2"
+
 
 # Memory table name
 # MEMORY_TABLE_NAME = "memory_entries"
@@ -98,11 +104,7 @@ LANCEDB_PATH = "./lancedb_data"
 # Parallel Processing Configuration
 # ============================================================================
 
-# Memory Building Parallel Processing
-ENABLE_PARALLEL_PROCESSING = True
-MAX_PARALLEL_WORKERS = 16  # Number of parallel workers for memory building
-
-# Retrieval Parallel Processing  
+# Retrieval Parallel Processing
 ENABLE_PARALLEL_RETRIEVAL = True
 MAX_RETRIEVAL_WORKERS = 8  # mengyao_debug Number of parallel workers for retrieval queries
 
@@ -122,9 +124,6 @@ JUDGE_API_KEY = "sk-11ce7640e46049a6977c0d96ba855ffb"
 # Judge LLM Base URL (optional - if None, uses OPENAI_BASE_URL)
 # Example: Use cheaper endpoint for evaluation
 JUDGE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/"
-
-# Judge LLM Model (optional - if None, uses LLM_MODEL)
-JUDGE_MODEL = "deepseek-v3.2"
 
 # Judge specific settings
 JUDGE_ENABLE_THINKING = False  # Usually false for evaluation tasks

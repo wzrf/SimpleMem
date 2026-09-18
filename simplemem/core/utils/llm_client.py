@@ -8,6 +8,7 @@ from simplemem.core.settings import settings as config
 from simplemem.core.fusionrag.run_question import FusionRAGModel
 from simplemem.core.fusionrag.sglang_kvcache import run_one_question_sglang
 import time
+import os
 
 class LLMClient:
     """
@@ -27,21 +28,24 @@ class LLMClient:
         self.enable_thinking = enable_thinking if enable_thinking is not None else config.ENABLE_THINKING
         self.use_streaming = use_streaming if use_streaming is not None else config.USE_STREAMING
         self.recomputation_rate = 0.3
-        self.sglang_url = "http://127.0.0.1:30003/v1/completions"
-        self.sglang_url_prefiller = "http://127.0.0.1:30003/v1/completions"
-        self.fusion_rag_model = FusionRAGModel(
-            model_path='',
-            use_multi_gpu=True,
-            model_type="qwen3",
-            model_name="Qwen3-32B",
-            draft_model_type="qwen",
-            draft_model_name="qwen2.5-3b",
-            preprocess_model_path="/data2/qy_tmp/xumengyao/bge-m3",
-            draft_model_path="/mnt/qjhs-sh-lab-01/models/Qwen2.5-3B-Instruct",
-            draft_model_url="http://127.0.0.1:30005/v1/completions",
-            apikey="xxx",
-            use_local_draft_model=False,
-        )
+        self.sglang_url = f"{self.base_url}/completions"
+        self.sglang_url_prefiller = f"{self.base_url}/completions"
+        if os.getenv("FUSIONRAG", "").lower() == "true":
+            self.fusion_rag_model = FusionRAGModel(
+                model_path='',
+                use_multi_gpu=True,
+                model_type="qwen3",
+                model_name="Qwen3-32B",
+                draft_model_type="qwen",
+                draft_model_name="qwen2.5-3b",
+                preprocess_model_path="/data2/qy_tmp/xumengyao/bge-m3",
+                draft_model_path="/mnt/qjhs-sh-lab-01/models/Qwen2.5-3B-Instruct",
+                draft_model_url="http://127.0.0.1:30005/v1/completions",
+                apikey="xxx",
+                use_local_draft_model=False,
+            )
+        else:
+            self.fusion_rag_model = None
 
         # Initialize OpenAI client with optional base_url
         client_kwargs = {"api_key": self.api_key}
@@ -66,7 +70,7 @@ class LLMClient:
         fusionrag_cache_list: list[str],
         query_prompt: str,
         model: str="qwen3-8b",
-        max_tokens = 5000
+        max_tokens = 15000
     ) -> (str, int, int):
 
         if "kimi" in model.lower():
@@ -79,6 +83,11 @@ class LLMClient:
                 "DEFAULT_SYSTEM_PROMPT": f"""<|im_start|>system\n{system_prompt}\n{prefix}""",
                 "USER_PROMPT": f"""<|im_end|>\n<|im_start|>user\n\nQuestion: /no_think {query_prompt}<|im_end|>\n<|im_start|>assistant\nAnswer: </think>"""
             }
+
+        fusionrag_cache_list_text = "".join(fusionrag_cache_list)
+        system_len = len(self.fusion_rag_model.draft_model_tokenizer.encode(template["DEFAULT_SYSTEM_PROMPT"]))
+        query_len = len(self.fusion_rag_model.draft_model_tokenizer.encode(template["USER_PROMPT"]))
+        origin_text_list_len = len(self.fusion_rag_model.draft_model_tokenizer.encode(fusionrag_cache_list_text))
 
         recompute_tokens, recompute_tokens_list, retrieved_docs, recompute_rate, sorted_doc_index, sorted_doc_index_before, selected_indices = self.fusion_rag_model.draft_one_question(
             template["DEFAULT_SYSTEM_PROMPT"],  ## DEFAULT_SYSTEM_PROMPT
@@ -122,7 +131,12 @@ class LLMClient:
                 "total_tokens": usage["total_tokens"],
             }
 
-            return content, usage["prompt_tokens"], usage["completion_tokens"]
+            return content, usage["prompt_tokens"], usage["completion_tokens"],  {
+                "system_len": system_len,
+                "query_len": query_len,
+                "origin_text_list_len": origin_text_list_len,
+                "fusionrag_text_list_len":  len(selected_indices),
+            }
         except Exception as e:
             print(e)
 
@@ -131,7 +145,7 @@ class LLMClient:
             messages: List[Dict[str, str]],
             temperature: float = 0.2,
             response_format: Optional[Dict[str, str]] = None,
-            max_retries: int = 2,
+            max_retries: int = 4,
             use_answer_client: bool = False,
     ) -> (str, int, int):
         """

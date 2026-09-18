@@ -8,6 +8,7 @@ Implements:
 - Generates compact memory units with resolved coreferences and absolute timestamps
 """
 import os
+from sys import prefix
 from typing import List, Optional
 from simplemem.core.models.memory_entry import MemoryEntry, Dialogue
 from simplemem.core.utils.llm_client import LLMClient
@@ -19,6 +20,72 @@ import concurrent.futures
 from functools import partial
 import time
 
+EXTRACTION_PROMPT_PREFIX = """
+        Your task is to extract all valuable information from the following dialogues and convert them into structured memory entries.
+        [Requirements]
+1. **Complete Coverage**: Generate enough memory entries to ensure ALL information in the dialogues is captured
+2. **Force Disambiguation**: Absolutely PROHIBIT using pronouns (he, she, it, they, this, that) and relative time (yesterday, today, last week, tomorrow)
+3. **Lossless Information**: Each entry's lossless_restatement must be a complete, independent, understandable sentence
+4. **Precise Extraction**:
+   - keywords: Core keywords (names, places, entities, topic words)
+   - timestamp: Absolute time in ISO 8601 format (if explicit time mentioned in dialogue)
+   - location: Specific location name (if mentioned)
+   - persons: All person names mentioned
+   - entities: Companies, products, organizations, etc.
+   - topic: The topic of this information
+
+[Output Format]
+Return a JSON array, each element is a memory entry:
+
+```json
+[
+  {{
+    "lossless_restatement": "Complete unambiguous restatement (must include all subjects, objects, time, location, etc.)",
+    "keywords": ["keyword1", "keyword2", ...],
+    "timestamp": "YYYY-MM-DDTHH:MM:SS or null",
+    "location": "location name or null",
+    "persons": ["name1", "name2", ...],
+    "entities": ["entity1", "entity2", ...],
+    "topic": "topic phrase"
+  }},
+  ...
+]
+```
+
+[Example]
+Dialogues:
+[2025-11-15T14:30:00] Alice: Bob, let's meet at Starbucks tomorrow at 2pm to discuss the new product
+[2025-11-15T14:31:00] Bob: Okay, I'll prepare the materials
+
+Output:
+```json
+[
+  {{
+    "lossless_restatement": "Alice suggested at 2025-11-15T14:30:00 to meet with Bob at Starbucks on 2025-11-16T14:00:00 to discuss the new product.",
+    "keywords": ["Alice", "Bob", "Starbucks", "new product", "meeting"],
+    "timestamp": "2025-11-16T14:00:00",
+    "location": "Starbucks",
+    "persons": ["Alice", "Bob"],
+    "entities": ["new product"],
+    "topic": "Product discussion meeting arrangement"
+  }},
+  {{
+    "lossless_restatement": "Bob agreed to attend the meeting and committed to prepare relevant materials.",
+    "keywords": ["Bob", "prepare materials", "agree"],
+    "timestamp": null,
+    "location": null,
+    "persons": ["Bob"],
+    "entities": [],
+    "topic": "Meeting preparation confirmation"
+  }}
+]
+```
+
+        """
+
+EXTRACTION_PROMPT_QUERY = """
+Now process the above dialogues. Return ONLY the JSON array, no other explanations.
+"""
 
 class MemoryBuilder:
     """
@@ -47,8 +114,6 @@ class MemoryBuilder:
         self.step_size = max(1, self.window_size - self.overlap_size)
 
         # Use config values as default if not explicitly provided
-        if os.getenv("DEBUG", "").lower() == "true":
-            enable_parallel_processing = False
         self.enable_parallel_processing = enable_parallel_processing if enable_parallel_processing is not None else getattr(config, 'ENABLE_PARALLEL_PROCESSING', True)
         self.max_parallel_workers = max_parallel_workers if max_parallel_workers is not None else getattr(config, 'MAX_PARALLEL_WORKERS', 4)
 
@@ -61,9 +126,11 @@ class MemoryBuilder:
         self.prompt_tokens = 0
         self.completion_tokens = 0
         self.llm_calls = 0
+        self.fusionrag_stats = []
 
     def stats(self):
         return {
+            "fusionrag_stats": self.fusionrag_stats,
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "calls": self.llm_calls,
@@ -188,6 +255,8 @@ class MemoryBuilder:
         """
         # Build dialogue text
         dialogue_text = "\n".join([str(d) for d in dialogues])
+        dialogue_text_list = [dialogue_text]
+        dialogue_text_list[0] = "[Current Window Dialogues]:\n" + dialogue_text_list[0]
         dialogue_ids = [d.dialogue_id for d in dialogues]
 
         # Build context
@@ -196,6 +265,9 @@ class MemoryBuilder:
             context = "\n[Previous Window Memory Entries (for reference to avoid duplication)]\n"
             for entry in self.previous_entries[:3]:  # Only show first 3
                 context += f"- {entry.lossless_restatement}\n"
+        context_list = [context]
+
+        fusionrag_cache_list = context_list + dialogue_text_list
 
         # Build prompt
         prompt = self._build_extraction_prompt(dialogue_text, dialogue_ids, context)
@@ -220,6 +292,29 @@ class MemoryBuilder:
                 response_format = None
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
+                fusionrag_stats = {}
+                if os.getenv("FUSIONRAG", "").lower() == "true":
+                    fusionrag_cache_list_text = "".join(fusionrag_cache_list)
+                    system_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode("You are a professional information extraction assistant, skilled at extracting structured, unambiguous information from conversations. You must output valid JSON format."))
+                    query_len = len(self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(EXTRACTION_PROMPT_QUERY))
+                    origin_text_list_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(fusionrag_cache_list_text))
+
+                    fusionrag_stats = {
+                        "system_len": system_len,
+                        "query_len": query_len,
+                        "origin_text_list_len": origin_text_list_len,
+                        "fusionrag_text_list_len":  origin_text_list_len * 0.3,
+                    }
+                    fusionrag_stats["reuse_type"] = "reuse_mix"
+                    reuse_prefill_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(dialogue_text))
+                    reuse_decode_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(context))
+                    fusionrag_stats["reuse_type_detail_prefill"] = reuse_prefill_len
+                    fusionrag_stats["reuse_type_detail_decode"] = reuse_decode_len
+                    self.fusionrag_stats.append(fusionrag_stats)
 
                 response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,
@@ -322,6 +417,7 @@ Output:
 Now process the above dialogues. Return ONLY the JSON array, no other explanations.
 """
 
+
     def _parse_llm_response(
         self,
         response: str,
@@ -407,6 +503,9 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
             for entry in self.previous_entries[:3]:  # Only show first 3
                 context += f"- {entry.lossless_restatement}\n"
 
+        context_list = [context]
+        dialogue_text_list = [dialogue_text]
+        fusionrag_cache_list = context_list + dialogue_text_list
         # Build prompt
         prompt = self._build_extraction_prompt(dialogue_text, dialogue_ids, context)
 
@@ -430,6 +529,33 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                 response_format = None
                 if hasattr(config, 'USE_JSON_FORMAT') and config.USE_JSON_FORMAT:
                     response_format = {"type": "json_object"}
+
+
+                if os.getenv("FUSIONRAG", "").lower() == "true":
+                    fusionrag_cache_list_text = "".join(fusionrag_cache_list)
+                    system_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(
+                            "You are a professional information extraction assistant, skilled at extracting structured, unambiguous information from conversations. You must output valid JSON format."
+                            +EXTRACTION_PROMPT_PREFIX))
+                    query_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(EXTRACTION_PROMPT_QUERY))
+                    origin_text_list_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(fusionrag_cache_list_text))
+
+                    fusionrag_stats = {
+                        "system_len": system_len,
+                        "query_len": query_len,
+                        "origin_text_list_len": origin_text_list_len,
+                        "fusionrag_text_list_len": origin_text_list_len * 0.3,
+                    }
+                    fusionrag_stats["reuse_type"] = "reuse_mix"
+                    reuse_prefill_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(dialogue_text))
+                    reuse_decode_len = len(
+                        self.llm_client.fusion_rag_model.draft_model_tokenizer.encode(context))
+                    fusionrag_stats["reuse_type_detail_prefill"] = reuse_prefill_len
+                    fusionrag_stats["reuse_type_detail_decode"] = reuse_decode_len
+                    self.fusionrag_stats.append(fusionrag_stats)
 
                 response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
                     messages,

@@ -64,7 +64,7 @@ class AnswerGenerator:
                     response_format = {"type": "json_object"}
 
                 if os.getenv("FUSIONRAG", "").lower() == "true":
-                    response, p_t, c_t = self.llm_client.generate_response_with_fusionrag(
+                    response, p_t, c_t, _ = self.llm_client.generate_response_with_fusionrag(
                         system_prompt="You are a professional Q&A assistant. Extract concise answers from context. You must output valid JSON format.",
                         prefix=prefix,
                         fusionrag_cache_list=context_str_list,

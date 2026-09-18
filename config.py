@@ -25,22 +25,22 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:30004/v1/" ##mengyao_debug change this (30034： 代理到 qjh006:30004, kimi)
+OPENAI_BASE_URL = "http://192.168.0.238:30003/v1" ##mengyao_debug change this
 
 # LLM Model name
-LLM_MODEL = "Kimi-K2.6" ##mengyao_debug change this
+LLM_MODEL = "kimi-k2.6" ##mengyao_debug change this
 
 # Path to LanceDB storage
 LANCEDB_PATH = "./lancedb_data_Kimi-K2.6" ##mengyao_debug change this
 
 # Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 5 ##mengyao_debug longmemeval
+WINDOW_SIZE = 40 ##mengyao_debug longmemeval
 
 # Window overlap size (for context continuity)
-OVERLAP_SIZE = 0
+OVERLAP_SIZE = 2
 
-ENABLE_PARALLEL_PROCESSING = False
-MAX_PARALLEL_WORKERS = 32  # mengyao_debug Number of parallel workers for memory building
+ENABLE_PARALLEL_PROCESSING = True
+MAX_PARALLEL_WORKERS = 16  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"
@@ -104,9 +104,9 @@ JUDGE_MODEL = "deepseek-v3.2"
 # Parallel Processing Configuration
 # ============================================================================
 
-# Retrieval Parallel Processing  
+# Retrieval Parallel Processing
 ENABLE_PARALLEL_RETRIEVAL = True
-MAX_RETRIEVAL_WORKERS = 8  # mengyao_debug Number of parallel workers for retrieval queries
+MAX_RETRIEVAL_WORKERS = 16  # mengyao_debug Number of parallel workers for retrieval queries
 
 # Planning and Reflection Configuration
 ENABLE_PLANNING = True

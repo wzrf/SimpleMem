@@ -14,7 +14,7 @@ IMPORTANT:
 # OpenAI API Key (required)
 # Get your key from: https://platform.openai.com/api-keys
 # OPENAI_API_KEY = "sk-11ce7640e46049a6977c0d96ba855ffb"
-OPENAI_API_KEY = "sk-dummy"
+OPENAI_API_KEY = "sk-11ce7640e46049a6977c0d96ba855ffb"
 
 
 # Custom OpenAI Base URL (optional)
@@ -25,10 +25,10 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:30034/v1/" ##mengyao_debug change this
+OPENAI_BASE_URL = "https://llm-ky9cvj0eef9zc4vm.cn-beijing.maas.aliyuncs.com/compatible-mode/v1" ##mengyao_debug change this
 
 # LLM Model name
-LLM_MODEL = "Kimi-K2.6" ##mengyao_debug change this
+LLM_MODEL = "kimi-k2.6" ##mengyao_debug change this
 
 # Path to LanceDB storage
 LANCEDB_PATH = "./lancedb_data_Kimi-K2.6" ##mengyao_debug change this
