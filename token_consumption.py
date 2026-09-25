@@ -8,6 +8,7 @@ import concurrent.futures
 import datetime
 import threading
 import copy
+from tqdm import tqdm
 
 SYSTEM = """You are a strict, method-blind evaluator of question answering. Judge only whether the candidate answer is semantically correct according to the question and reference answer. Do not infer which system produced it."""
 TEMPLATE = """Decide whether the candidate answer is correct.
@@ -342,10 +343,18 @@ def process_eval_dataset(
                 return None
 
         # 使用线程池并发执行
-        max_workers = min(16, len(judgment_tasks))  # 限制最大并发数
+        max_workers = min(64, len(judgment_tasks))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_task = {executor.submit(process_task, task): task for task in judgment_tasks}
-            for future in concurrent.futures.as_completed(future_to_task):
+            future_to_task = {
+                executor.submit(process_task, task): task
+                for task in judgment_tasks
+            }
+
+            for future in tqdm(
+                    concurrent.futures.as_completed(future_to_task),
+                    total=len(judgment_tasks),
+                    desc="Judging",
+            ):
                 result = future.result()
                 if result is not None:
                     cat_key, correct = result
@@ -370,7 +379,9 @@ def process_eval_dataset(
     avg_prompt_question = sum(question_prompt_tokens) / len(question_prompt_tokens)
     avg_comletion_question = sum(question_completion_tokens) / len(question_completion_tokens)
 
-    print(f"\n================ [{dataset_name}] Summary ================")
+    print(
+        f"\033[33m\n================ [{dataset_name}] Summary ================\033[0m"
+    )
     print(
         f"[Build] Average Prompt Tokens    : {avg_prompt:.2f}\n"
         f"[Build] Average Completion Tokens: {avg_comp:.2f}"
@@ -604,32 +615,37 @@ if __name__ == "__main__":
         (
             "./token_consumption_build_memory_locomo",
             "./results_locomo",
-            "locomo",
+            "locomo-qwen",
         ),
         # (
-        #     "./token_consumption_build_memory_locomo_glm-4.5-air",
-        #     "./results_locomo_glm-4.5-air",
-        #     "locomo",
+        #     "./token_consumption_build_memory_locomo_fusionrag",
+        #     "./results_locomo_fusionrag",
+        #     "locomo_fusionrag",
         # ),
-        # (
-        #     "./token_consumption_build_memory_locomo_kimi-k2.6",
-        #     "./results_locomo_kimi-k2.6",
-        #     "locomo",
-        # ),
-        # (
-        #     "./token_consumption_build_memory_longmemeval",
-        #     "./results_longmem",
-        #     "longmemeval",
-        # ),
-        # (
-        #     "./token_consumption_build_memory_longmemeval_glm-4.5-air",
-        #     "./results_longmem_glm-4.5-air",
-        #     "longmemeval",
-        # ),
+        (
+            "./token_consumption_build_memory_locomo_glm-4.5-air",
+            "./results_locomo_glm-4.5-air",
+            "locomo-glm",
+        ),
+        (
+            "./token_consumption_build_memory_locomo_kimi-k2.6",
+            "./results_locomo_kimi-k2.6",
+            "locomo-kimi",
+        ),
+        (
+            "./token_consumption_build_memory_longmemeval",
+            "./results_longmem",
+            "longmemeval-qwen",
+        ),
+        (
+            "./token_consumption_build_memory_longmemeval_glm-4.5-air",
+            "./results_longmem_glm-4.5-air",
+            "longmemeval-glm",
+        ),
         (
             "./token_consumption_build_memory_longmemeval_kimi-k2.6",
             "./results_longmem_kimi-k2.6",
-            "longmemeval",
+            "longmemeval-kimi",
         ),
     ]
 

@@ -36,7 +36,7 @@ from simplemem.core.models.memory_entry import Dialogue
 
 # Initialize SentenceTransformer model for semantic similarity
 try:
-    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2', device="cpu")
+    sentence_model = SentenceTransformer('/mnt/qjhs-sh-lab-01/models/all-MiniLM-L6-v2', device="cuda:0")
 except Exception as e:
     print(f"Warning: Could not load SentenceTransformer model: {e}")
     sentence_model = None
@@ -969,7 +969,7 @@ Return ONLY the JSON, no other text.
         max_workers = min(
             max_workers,
             len(qa_list),  # Don't create more workers than questions
-            20  # Higher limit for better parallelism, but watch API rate limits
+            32  # Higher limit for better parallelism, but watch API rate limits
         )
         max_workers = max(max_workers, 1)  # At least 1 worker
 

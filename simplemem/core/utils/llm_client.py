@@ -27,7 +27,7 @@ class LLMClient:
         self.base_url = base_url or config.OPENAI_BASE_URL
         self.enable_thinking = enable_thinking if enable_thinking is not None else config.ENABLE_THINKING
         self.use_streaming = use_streaming if use_streaming is not None else config.USE_STREAMING
-        self.recomputation_rate = 0.3
+        self.recomputation_rate = 0.7
         self.sglang_url = f"{self.base_url}/completions"
         self.sglang_url_prefiller = f"{self.base_url}/completions"
         if os.getenv("FUSIONRAG", "").lower() == "true":
@@ -40,7 +40,7 @@ class LLMClient:
                 draft_model_name="qwen2.5-3b",
                 preprocess_model_path="/data2/qy_tmp/xumengyao/bge-m3",
                 draft_model_path="/mnt/qjhs-sh-lab-01/models/Qwen2.5-3B-Instruct",
-                draft_model_url="http://127.0.0.1:30005/v1/completions",
+                draft_model_url="http://127.0.0.1:30015/v1/completions",
                 apikey="xxx",
                 use_local_draft_model=False,
             )
@@ -64,6 +64,7 @@ class LLMClient:
         )
 
     def generate_response_with_fusionrag(
+
         self,
         system_prompt: str,
         prefix: str,

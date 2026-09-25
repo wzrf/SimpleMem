@@ -92,11 +92,14 @@ class LongMemEvalTester:
 
         dialogues = self.convert_to_dialogues(sample)
         build_flag = f"{config.LANCEDB_PATH}/{table_name}.flag"
+        result_file = f"{save_dir}/{sample.question_id}.json"
         prompt_tokens = 0
         completion_tokens = 0
+        rebuild = False
 
         # 构建向量存储
         if not os.path.exists(build_flag):
+            rebuild = True
             system.vector_store.clear()
             system.add_dialogues(dialogues)
             system.finalize()
@@ -108,6 +111,11 @@ class LongMemEvalTester:
             token_consumtion_result = f"{TOKEN_CONSUMPTION}/longmemeval_{sample.question_id}.json"
             with open(token_consumtion_result, "w", encoding="utf-8") as f:
                 json.dump(system.memory_builder.stats(), f, indent=4)
+
+        if not rebuild and os.path.exists(result_file):
+            with open(result_file, "r", encoding="utf-8") as f:
+                result_json = json.load(f)
+                return result_json
 
         # 检索与生成答案
         retrieval_start = time.time()

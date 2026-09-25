@@ -25,7 +25,7 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:20010/v1/" ##mengyao_debug change this
+OPENAI_BASE_URL = "http://127.0.0.1:20000/v1/" ##mengyao_debug change this
 
 # LLM Model name
 LLM_MODEL = "Qwen3-8B" ##mengyao_debug change this
@@ -104,7 +104,7 @@ JUDGE_MODEL = "deepseek-v3.2"
 # Parallel Processing Configuration
 # ============================================================================
 
-# Retrieval Parallel Processing
+# Retrieval Parallel Processing  
 ENABLE_PARALLEL_RETRIEVAL = True
 MAX_RETRIEVAL_WORKERS = 32  # mengyao_debug Number of parallel workers for retrieval queries
 
