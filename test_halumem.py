@@ -6,7 +6,7 @@ from pathlib import Path
 from dataclasses import dataclass
 from typing import List, Dict, Union
 from concurrent.futures import ThreadPoolExecutor, as_completed
-
+import config
 # 导入框架系统与组件
 from main import SimpleMemSystem
 from simplemem.core.models.memory_entry import Dialogue
@@ -72,7 +72,7 @@ class HaluMemTester:
         self.judge_client = create_judge_llm_client() if use_llm_judge else None
 
     def run_single_sample(self, sample: HaluMemSample, sample_idx: int, embedding_model,
-                          save_dir: str = "./results_halumem"):
+                          save_dir: str = "./results_halumem", consumption_dir=""):
         """
         处理单个 HaluMem 样本：
         按 Session 顺序执行：
@@ -94,6 +94,7 @@ class HaluMemTester:
 
         # 遍历每个 Session
         for s_idx, session in enumerate(sample.sessions):
+            print(f"sample_idx: {sample_idx} running session: {s_idx}/{len(sample.sessions)}")
             dialogue_turns = session.get("dialogue", [])
             questions = session.get("questions", [])
 
@@ -132,6 +133,10 @@ class HaluMemTester:
 
                     total_build_prompt_tokens += turn_build_prompt_tokens
                     total_build_completion_tokens += turn_build_completion_tokens
+
+                token_consumtion_result = f"{consumption_dir}/halumem_{sample_idx}.json"
+                with open(token_consumtion_result, "w", encoding="utf-8") as f:
+                    json.dump(system.memory_builder.stats(), f, indent=4)
 
             # ----------------------------------------------------------------
             # 步骤 2：在记忆更新完成后，回答该 Session 内的问题
@@ -233,15 +238,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Test SimpleMem on HaluMem dataset')
     parser.add_argument('--dataset', type=str, default='test_ref/HaluMem-Medium.jsonl',
                         help='Path to HaluMem jsonl file or directory')
-    parser.add_argument('--llm-judge', action='store_true', help='Enable LLM-as-judge evaluation')
-    parser.add_argument('--output-dir', type=str, default='./results_halumem',
-                        help='Directory to save evaluation results')
+    # parser.add_argument('--llm-judge', action='store_true', help='Enable LLM-as-judge evaluation')
     args = parser.parse_args()
+    args.llm_judge = False
 
     # 1. 加载 jsonl 数据集
     samples = load_halumem_dataset(args.dataset)
+    TOKEN_CONSUMPTION_DIR = "token_consumption_build_memory_halumem"
+    if config.LLM_MODEL.lower() not in ["qwen3-8b", "qwen3_8b"]:
+        TOKEN_CONSUMPTION_DIR = TOKEN_CONSUMPTION_DIR+f"_{config.LLM_MODEL.lower()}"
+    RESULT_DIR = "./results_halumem"
+    if config.LLM_MODEL.lower() not in ["qwen3-8b", "qwen3_8b"]:
+        RESULT_DIR = RESULT_DIR+f"_{config.LLM_MODEL.lower()}"
 
-    MAX_PARALLEL = 16
+    os.makedirs(RESULT_DIR, exist_ok=True)
+    os.makedirs(TOKEN_CONSUMPTION_DIR, exist_ok=True)
+    print(f"TOKEN_CONSUMPTION_DIR={TOKEN_CONSUMPTION_DIR}")
+    print(f"RESULT_DIR={RESULT_DIR}")
+
+    MAX_PARALLEL = 20
     if os.environ.get('DEBUG') == "1":
         MAX_PARALLEL = 1
 
@@ -252,7 +267,7 @@ if __name__ == "__main__":
         idx, sample = idx_sample
         tester = HaluMemTester(use_llm_judge=args.llm_judge)
         emb_model = embedding_model
-        return tester.run_single_sample(sample, idx, emb_model, save_dir=args.output_dir)
+        return tester.run_single_sample(sample, idx, emb_model, save_dir=RESULT_DIR, consumption_dir=TOKEN_CONSUMPTION_DIR)
 
 
     all_flattened_results = []

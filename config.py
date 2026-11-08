@@ -25,22 +25,22 @@ OPENAI_API_KEY = "sk-dummy"
 #   - Atlas Cloud: "https://api.atlascloud.ai/v1"  (OpenAI-compatible; LLM_MODEL e.g. "deepseek-ai/deepseek-v4-pro")
 #   - Local server: "http://localhost:8000/v1"
 #   - OpenAI (default): None
-OPENAI_BASE_URL = "http://127.0.0.1:20010/v1/" ##mengyao_debug change this
+OPENAI_BASE_URL = "http://127.0.0.1:20001/v1/" ##mengyao_debug change this
 
 # LLM Model name
 LLM_MODEL = "Qwen3-8B" ##mengyao_debug change this
 
 # Path to LanceDB storage
-LANCEDB_PATH = "./lancedb_data" ##mengyao_debug change this
+LANCEDB_PATH = "./lancedb_data_halumem_Qwen3-8B" ##mengyao_debug change this
 
 # Number of dialogues per window (for locomo; for other dataset, please finetune it)
-WINDOW_SIZE = 10 ##mengyao_debug longmemeval
+WINDOW_SIZE = 40 ##mengyao_debug longmemeval
 
 # Window overlap size (for context continuity)
-OVERLAP_SIZE = 1
+OVERLAP_SIZE = 2
 
 ENABLE_PARALLEL_PROCESSING = True
-MAX_PARALLEL_WORKERS = 140 # mengyao_debug Number of parallel workers for memory building
+MAX_PARALLEL_WORKERS = 32  # mengyao_debug Number of parallel workers for memory building
 
 # Embedding model (local, no API needed)
 EMBEDDING_MODEL = "/mnt/qjhs-sh-lab-01/models/Qwen3-Embedding-0.6B"
@@ -106,7 +106,7 @@ JUDGE_MODEL = "deepseek-v3.2"
 
 # Retrieval Parallel Processing
 ENABLE_PARALLEL_RETRIEVAL = True
-MAX_RETRIEVAL_WORKERS = 32  # mengyao_debug Number of parallel workers for retrieval queries
+MAX_RETRIEVAL_WORKERS = 20  # mengyao_debug Number of parallel workers for retrieval queries
 
 # Planning and Reflection Configuration
 ENABLE_PLANNING = True
@@ -128,7 +128,7 @@ JUDGE_BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/"
 # Judge specific settings
 JUDGE_ENABLE_THINKING = False  # Usually false for evaluation tasks
 JUDGE_USE_STREAMING = False    # Usually false for evaluation
-JUDGE_TEMPERATURE = 0.3        
+JUDGE_TEMPERATURE = 0.3
 
 # Example configurations:
 # 1. Use cheaper model for judge evaluation:

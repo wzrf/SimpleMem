@@ -10,6 +10,11 @@ import threading
 import copy
 from tqdm import tqdm
 
+Prefix_cache = """
+You are a professional information extraction assistant, skilled at extracting structured, unambiguous information from conversations. You must output valid JSON format.
+Your task is to extract all valuable information from the following dialogues and convert them into structured memory entries.
+"""
+
 SYSTEM = """You are a strict, method-blind evaluator of question answering. Judge only whether the candidate answer is semantically correct according to the question and reference answer. Do not infer which system produced it."""
 TEMPLATE = """Decide whether the candidate answer is correct.
 
@@ -94,7 +99,7 @@ def parse_correct(content: object) -> bool:
         print(f"parse error: {e} text: {text}")
         raise
     if not isinstance(value, dict) or set(value) != {"correct"} or not isinstance(value["correct"], bool):
-        raise ValueError("judge response is not strict correct:boolean JSON")
+        raise ValueError(f"judge response is not strict correct:boolean JSON: {text[:500]!r}")
     return value["correct"]
 
 def judge_answer(question: str, reference: str, prediction: str, config) -> tuple[bool, dict]:
@@ -104,9 +109,12 @@ def judge_answer(question: str, reference: str, prediction: str, config) -> tupl
     """
     try:
         # Use judge-specific config if available, fallback to main config
-        api_key = getattr(config, "JUDGE_API_KEY", None) or getattr(config, "OPENAI_API_KEY", "sk-dummy")
-        base_url = getattr(config, "JUDGE_BASE_URL", None) or getattr(config, "OPENAI_BASE_URL", "http://127.0.0.1:30002/v1")
-        model = getattr(config, "JUDGE_MODEL", None) or getattr(config, "LLM_MODEL", "GLM-5.3")
+        # model = "GLM-5.3"
+        # api_key = getattr(config, "OPENAI_API_KEY", "sk-dummy")
+        # base_url = getattr(config, "OPENAI_BASE_URL", "http://127.0.0.1:30002/v1")
+        api_key = "sk-dummy"
+        base_url = "http://192.168.0.239:31002/v1"
+        model = "GLM-5.3"
         timeout = getattr(config, "JUDGE_TIMEOUT", 900.0)
         max_tokens = getattr(config, "JUDGE_MAX_TOKENS", 1024)
 
@@ -193,10 +201,21 @@ def process_eval_dataset(
     token_folder = Path(token_dir)
     result_folder = Path(result_dir)
 
+
     # 1. 统计 Token 消耗
     all_prompt_tokens = []
+    all_prefix_tokens = []
     all_completion_tokens = []
-
+    model_path = ""
+    if "qwen" in dataset_name:
+        model_path = "/mnt/qjhs-sh-lab-01/models/Qwen3-8B/"
+    elif "glm" in dataset_name:
+        model_path = "/mnt/qjhs-sh-lab-04/models/GLM-4.5-Air"
+    elif "kimi" in dataset_name:
+        model_path = "/mnt/qjhs-sh-lab-01/models/Kimi-K2.6"
+    from transformers import AutoTokenizer
+    tokenizer = AutoTokenizer.from_pretrained(model_path, trust_remote_code=True)
+    once_prefix = tokenizer.tokenize(Prefix_cache)
     if token_folder.exists():
         for file_path in token_folder.glob("*.json"):
             try:
@@ -204,6 +223,12 @@ def process_eval_dataset(
                     data = json.load(f)
                 p_tokens = data.get("prompt_tokens", 0)
                 c_tokens = data.get("completion_tokens", 0)
+                calls = data.get("calls", 0)
+                if "call_record" in data:
+                    prefix_len = [call_record["usage"]["prompt_tokens_details"]["cached_tokens"] for call_record in data["call_record"]]
+                    all_prefix_tokens.append(sum(prefix_len))
+                else:
+                    all_prefix_tokens.append(calls * len(once_prefix))
                 if p_tokens > 0:
                     all_prompt_tokens.append(p_tokens)
                 if c_tokens > 0:
@@ -281,7 +306,41 @@ def process_eval_dataset(
                                 "prediction": item["answer"]
                             })
 
-                # 情况 B：单个 JSON 对应单个样本 (如 question_type + metrics)
+                # 情况 C：halumem 等每个 JSON 文件本身就是一个样本列表
+                elif isinstance(data, list):
+                    for item in data:
+                        cat_key = item.get("question_type") or item.get(
+                            "category", "uncategorized"
+                        )
+                        metrics = item.get("metrics", {})
+
+                        f1_val = metrics.get("f1")
+                        bleu1_val = metrics.get("bleu1")
+
+                        if f1_val is not None:
+                            metrics_by_category[cat_key]["f1"].append(f1_val)
+                            global_f1s.append(f1_val)
+                        if bleu1_val is not None:
+                            metrics_by_category[cat_key]["bleu1"].append(
+                                bleu1_val
+                            )
+                            global_bleu1s.append(bleu1_val)
+
+                        # Halumem: 每条样本的检索+回答阶段 token (query_total_*)
+                        if "query_total_prompt_tokens" in item and "query_total_completion_tokens" in item:
+                            question_prompt_tokens.append(item.get("query_total_prompt_tokens"))
+                            question_completion_tokens.append(item.get("query_total_completion_tokens"))
+
+                        # LLM-as-Judge evaluation (collect tasks for parallel processing)
+                        if "question" in item and "answer" in item and "reference" in item:
+                            judgment_tasks.append({
+                                "cat_key": cat_key,
+                                "question": item["question"],
+                                "reference": item["reference"],
+                                "prediction": item["answer"]
+                            })
+
+                # 情况 B：longmemeval 单个 JSON 对应单个样本 (如 question_type + metrics)
                 elif "metrics" in data:
                     # 对 locomo 数据集，检查 category 过滤
                     if "locomo" in dataset_name.lower():
@@ -343,7 +402,7 @@ def process_eval_dataset(
                 return None
 
         # 使用线程池并发执行
-        max_workers = min(64, len(judgment_tasks))
+        max_workers = min(48, len(judgment_tasks))
         with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
             future_to_task = {
                 executor.submit(process_task, task): task
@@ -370,6 +429,11 @@ def process_eval_dataset(
         if all_prompt_tokens
         else 0
     )
+    avg_prompt_without_prefix = (
+        (sum(all_prompt_tokens) - sum(all_prefix_tokens)) / len(all_prompt_tokens)
+        if all_prompt_tokens
+        else 0
+    )
     avg_comp = (
         sum(all_completion_tokens) / len(all_completion_tokens)
         if all_completion_tokens
@@ -384,6 +448,7 @@ def process_eval_dataset(
     )
     print(
         f"[Build] Average Prompt Tokens    : {avg_prompt:.2f}\n"
+        f"[Build] avg_prompt_without_prefix: {avg_prompt_without_prefix:.2f}\n"
         f"[Build] Average Completion Tokens: {avg_comp:.2f}"
     )
     print(
@@ -613,40 +678,68 @@ def process_halumem_dataset(result_dir: str, dataset_name: str):
 if __name__ == "__main__":
     tasks = [
         (
-            "./token_consumption_build_memory_locomo",
-            "./results_locomo",
-            "locomo-qwen",
+            "./token_consumption_build_memory_longmemeval_glm-4.5-air",
+            "./results_longmemeval_GLM_BGE_rerank",
+            "longmemeval-glm-BGE-rerank",
+        ),
+        (
+            "./token_consumption_build_memory_locomo_glm-4.5-air",
+            "./results_locomo_GLM_BGE_rerank",
+            "locomo-glm-BGE-rerank",
         ),
         # (
         #     "./token_consumption_build_memory_locomo_fusionrag",
         #     "./results_locomo_fusionrag",
         #     "locomo_fusionrag",
         # ),
-        (
-            "./token_consumption_build_memory_locomo_glm-4.5-air",
-            "./results_locomo_glm-4.5-air",
-            "locomo-glm",
-        ),
-        (
-            "./token_consumption_build_memory_locomo_kimi-k2.6",
-            "./results_locomo_kimi-k2.6",
-            "locomo-kimi",
-        ),
-        (
-            "./token_consumption_build_memory_longmemeval",
-            "./results_longmem",
-            "longmemeval-qwen",
-        ),
-        (
-            "./token_consumption_build_memory_longmemeval_glm-4.5-air",
-            "./results_longmem_glm-4.5-air",
-            "longmemeval-glm",
-        ),
-        (
-            "./token_consumption_build_memory_longmemeval_kimi-k2.6",
-            "./results_longmem_kimi-k2.6",
-            "longmemeval-kimi",
-        ),
+
+
+        # (
+        #     "./token_consumption_build_memory_locomo",
+        #     "./results_locomo",
+        #     "locomo-qwen",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_locomo_glm-4.5-air",
+        #     "./results_locomo_glm-4.5-air",
+        #     "locomo-glm",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_locomo_kimi-k2.6",
+        #     "./results_locomo_kimi-k2.6",
+        #     "locomo-kimi",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_longmemeval",
+        #     "./results_longmem",
+        #     "longmemeval-qwen",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_longmemeval_glm-4.5-air",
+        #     "./results_longmem_glm-4.5-air",
+        #     "longmemeval-glm",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_longmemeval_kimi-k2.6",
+        #     "./results_longmem_kimi-k2.6",
+        #     "longmemeval-kimi",
+        # ),
+
+        # (
+        #     "./token_consumption_build_memory_halumem",
+        #     "./results_halumem",
+        #     "halumem-qwen",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_halumem_glm-4.5-air",
+        #     "./results_halumem_glm-4.5-air",
+        #     "halumem-glm",
+        # ),
+        # (
+        #     "./token_consumption_build_memory_halumem_kimi-k2.6",
+        #     "./results_halumem_kimi-k2.6",
+        #     "halumem-kimi",
+        # ),
     ]
 
     for token_path, result_path, name in tasks:

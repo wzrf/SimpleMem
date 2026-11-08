@@ -1,6 +1,10 @@
+*results_*_dump*
+results_locomo*
+results_halumem*
+test_ref/*.jsonl
 token_consumption_build_memory*
 results/
-results_longmem/
+results_longmem*
 # Python cache files
 __pycache__/
 *.py[cod]
@@ -61,7 +65,6 @@ env/
 .DS_Store
 
 # Configuration files with secrets (root-level only; contains API keys)
-/config.py
 *.env
 .env
 
@@ -69,7 +72,7 @@ env/
 *.db
 *.sqlite
 *.sqlite3
-lancedb_data/
+lancedb_data*/
 omni_memory_data/
 evolution_results/
 

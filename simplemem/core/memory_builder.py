@@ -127,6 +127,7 @@ class MemoryBuilder:
         self.completion_tokens = 0
         self.llm_calls = 0
         self.fusionrag_stats = []
+        self.call_record = []
 
     def stats(self):
         return {
@@ -134,6 +135,7 @@ class MemoryBuilder:
             "prompt_tokens": self.prompt_tokens,
             "completion_tokens": self.completion_tokens,
             "calls": self.llm_calls,
+            "call_record": self.call_record,
         }
 
     def add_dialogue(self, dialogue: Dialogue, auto_process: bool = True):
@@ -310,11 +312,22 @@ class MemoryBuilder:
                     self.fusionrag_stats.append(fusionrag_stats)
 
                 else:
-                    response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
+                    time_start = time.time()
+                    response, prompt_tokens, completion_tokens, usage_info = self.llm_client.chat_completion_with_token_comsumption_and_usage(
                         messages,
                         temperature=0.1,
                         response_format=response_format
                     )
+                    time_end = time.time()
+
+                    call_record = {
+                        "metadata_messages": messages,
+                        "prefix": "You are a professional information extraction assistant, skilled at extracting structured, unambiguous information from conversations. You must output valid JSON format." + EXTRACTION_PROMPT_PREFIX,
+                        "response": response,
+                        "usage": usage_info,
+                        "time": time_end - time_start,
+                    }
+                    self.call_record.append(call_record)
                 self.llm_calls += 1
                 self.prompt_tokens += prompt_tokens
                 self.completion_tokens += completion_tokens
@@ -542,11 +555,22 @@ Now process the above dialogues. Return ONLY the JSON array, no other explanatio
                     self.fusionrag_stats.append(fusionrag_stats)
 
                 else:
-                    response, prompt_tokens, completion_tokens = self.llm_client.chat_completion_with_token_comsumption(
+                    time_start = time.time()
+                    response, prompt_tokens, completion_tokens, usage_info = self.llm_client.chat_completion_with_token_comsumption_and_usage(
                         messages,
                         temperature=0.1,
                         response_format=response_format,
                     )
+                    time_end = time.time()
+
+                    call_record = {
+                        "metadata_messages": messages,
+                        "prefix": "You are a professional information extraction assistant, skilled at extracting structured, unambiguous information from conversations. You must output valid JSON format." + EXTRACTION_PROMPT_PREFIX,
+                        "response": response,
+                        "usage": usage_info,
+                        "time": time_end - time_start,
+                    }
+                    self.call_record.append(call_record)
 
                 # Parse response
                 entries = self._parse_llm_response(response, dialogue_ids)
